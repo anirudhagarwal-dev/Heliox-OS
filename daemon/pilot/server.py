@@ -196,8 +196,8 @@ class PilotServer:
 
         # Cognitive Hub — unified TRIBE v2 cognitive features
         try:
-            from pilot.cognitive.hub import CognitiveHub
             from pilot.changelog import announce_new_features, mark_version_seen
+            from pilot.cognitive.hub import CognitiveHub
 
             self._cognitive_hub = CognitiveHub()
             logger.info("CognitiveHub initialized with TRIBE v2")

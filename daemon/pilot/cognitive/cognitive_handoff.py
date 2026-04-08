@@ -44,22 +44,22 @@ class CognitiveSnapshot:
 
     snapshot_id: str
     timestamp: float
-    
+
     # Core cognitive metrics
     attention: float
     stress: float
     load: float
-    
+
     # Context
     active_app: str = ""
     active_task: str = ""
     recent_actions: list[str] = field(default_factory=list)
     current_workflow: str = ""
     workflow_step: int = 0
-    
+
     # Workspace state
     workspace_data: dict[str, Any] = field(default_factory=dict)
-    
+
     # Recommendations
     suggested_actions: list[str] = field(default_factory=list)
 
@@ -139,36 +139,36 @@ class CloudStore:
     def push_snapshot(self, snapshot: CognitiveSnapshot) -> None:
         """Push a snapshot to the cloud."""
         path = self._get_cloud_path()
-        
+
         # Load existing
         data = {"snapshots": [], "last_update": 0.0}
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-            except:
+            except Exception:
                 pass
-        
+
         # Add snapshot
         data["snapshots"].append(snapshot.to_dict())
         data["last_update"] = time.time()
-        
+
         # Keep last 10 snapshots
         data["snapshots"] = data["snapshots"][-10:]
-        
+
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def get_latest_snapshot(self) -> dict[str, Any] | None:
         """Get the latest snapshot from the cloud."""
         path = self._get_cloud_path()
-        
+
         if not path.exists():
             return None
-        
+
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             snapshots = data.get("snapshots", [])
             return snapshots[-1] if snapshots else None
-        except:
+        except Exception:
             return None
 
     def save_context(self, context_id: str, context_data: dict[str, Any]) -> None:
@@ -185,17 +185,17 @@ class CloudStore:
     def load_context(self, context_id: str) -> dict[str, Any] | None:
         """Load context for handoff."""
         path = self._data_dir / f"context_{context_id}.json"
-        
+
         if not path.exists():
             return None
-        
+
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if time.time() > data.get("expires_at", 0):
                 path.unlink()
                 return None
             return data.get("data")
-        except:
+        except Exception:
             return None
 
 
@@ -209,7 +209,7 @@ class CognitiveHandoffEngine:
         self._device_name = device_name
         self._device_type = self._detect_device_type()
         self._store = store or CloudStore()
-        
+
         # Session management
         self._session = DeviceSession(
             session_id=str(uuid.uuid4()),
@@ -218,13 +218,13 @@ class CognitiveHandoffEngine:
             started_at=time.time(),
             last_active=time.time(),
         )
-        
+
         # Known devices
         self._known_devices: list[DeviceSession] = []
-        
+
         # Handoff history
         self._handoffs: list[Handoff] = []
-        
+
         # Sync state
         self._last_sync_time: float = 0.0
         self._pending_sync: bool = False
@@ -233,7 +233,7 @@ class CognitiveHandoffEngine:
         """Detect the current device type."""
         import platform
         system = platform.system().lower()
-        
+
         if system == "windows" or system == "darwin" or system == "linux":
             return "desktop"  # Assume desktop for PC
         return "unknown"
@@ -252,14 +252,14 @@ class CognitiveHandoffEngine:
     def end_session(self) -> None:
         """End the current session."""
         self._session.is_active = False
-        
+
         # Add to known devices
         self._known_devices.append(self._session)
-        
+
         # Keep only last 5 devices
         if len(self._known_devices) > 5:
             self._known_devices = self._known_devices[-5:]
-        
+
         # Create new session
         self._session = DeviceSession(
             session_id=str(uuid.uuid4()),
@@ -283,10 +283,10 @@ class CognitiveHandoffEngine:
     ) -> CognitiveSnapshot:
         """Capture current cognitive state as a snapshot."""
         now = time.time()
-        
+
         # Get recent actions from the session
         recent = [s.to_dict() for s in self._session.cognitive_snapshots[-5:]]
-        
+
         snapshot = CognitiveSnapshot(
             snapshot_id=str(uuid.uuid4())[:8],
             timestamp=now,
@@ -299,26 +299,26 @@ class CognitiveHandoffEngine:
             current_workflow=workflow,
             workflow_step=0,
         )
-        
+
         self._session.cognitive_snapshots.append(snapshot)
-        
+
         # Keep last 10 snapshots in session
         if len(self._session.cognitive_snapshots) > 10:
             self._session.cognitive_snapshots = self._session.cognitive_snapshots[-10:]
-        
+
         # Sync to cloud
         self._store.push_snapshot(snapshot)
-        
+
         return snapshot
 
     def sync_to_cloud(self) -> None:
         """Force sync to cloud."""
         now = time.time()
-        
+
         if self._session.cognitive_snapshots:
             latest = self._session.cognitive_snapshots[-1]
             self._store.push_snapshot(latest)
-        
+
         self._last_sync_time = now
         logger.info("Synced cognitive state to cloud")
 
@@ -332,14 +332,14 @@ class CognitiveHandoffEngine:
             if device.device_name == target_device and device.is_active:
                 target = device
                 break
-        
+
         if not target:
             logger.warning("Target device not found: %s", target_device)
             return None
-        
+
         # Get latest context
         context = self._store.get_latest_snapshot()
-        
+
         # Create handoff
         handoff = Handoff(
             handoff_id=str(uuid.uuid4())[:8],
@@ -348,32 +348,32 @@ class CognitiveHandoffEngine:
             timestamp=time.time(),
             context_synced=context is not None,
         )
-        
+
         self._handoffs.append(handoff)
-        
+
         # Keep last MAX_HANDOVERS
         if len(self._handoffs) > MAX_HANDOVERS:
             self._handoffs = self._handoffs[-MAX_HANDOVERS:]
-        
+
         logger.info(
             "Handoff initiated: %s -> %s",
             self._session.device_name,
             target_device,
         )
-        
+
         return handoff
 
     def receive_handoff(self) -> dict[str, Any] | None:
         """Receive a handoff from another device."""
         context = self._store.get_latest_snapshot()
-        
+
         if not context:
             return None
-        
+
         # Acknowledge the handoff
         if self._handoffs:
             self._handoffs[-1].acknowledged = True
-        
+
         return context
 
     def get_handoff_suggestion(
@@ -388,11 +388,11 @@ class CognitiveHandoffEngine:
             for device in self._known_devices:
                 if device.device_type == "mobile" and device.is_active:
                     return f"Your cognitive load is high ({int(load*100)}%). Want to switch to {device.device_name}?"
-        
+
         # High stress → suggest break on mobile
         if stress > 0.7:
             return "You seem stressed. Want to take this to a different device for a fresh start?"
-        
+
         return None
 
     # ── Context Transfer ──
@@ -420,7 +420,7 @@ class CognitiveHandoffEngine:
                 device.last_active = time.time()
                 device.is_active = True
                 return
-        
+
         # Add new device
         new_device = DeviceSession(
             session_id=str(uuid.uuid4()),
@@ -431,16 +431,16 @@ class CognitiveHandoffEngine:
             is_active=True,
         )
         self._known_devices.append(new_device)
-        
+
         logger.info("Registered device: %s (%s)", device_name, device_type)
 
     def get_active_devices(self) -> list[dict[str, Any]]:
         """Get all active devices."""
         devices = [d.to_dict() for d in self._known_devices if d.is_active]
-        
+
         # Add current device
         devices.append(self._session.to_dict())
-        
+
         return devices
 
     # ── Stats ──

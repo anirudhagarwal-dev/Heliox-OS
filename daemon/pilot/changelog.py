@@ -99,18 +99,18 @@ def check_for_updates() -> list[dict[str, Any]]:
     """Check if there are new features since last run."""
     last_version = get_last_version()
     current_version = VERSION
-    
+
     if last_version is None:
         return get_full_changelog()
-    
+
     if last_version == current_version:
         return []
-    
+
     new_features = []
     for ver in CHANGELOG:
         if _compare_versions(ver, last_version) > 0:
             new_features.extend(CHANGELOG[ver]["features"])
-    
+
     return new_features
 
 
@@ -161,20 +161,20 @@ def get_welcome_message() -> dict[str, Any]:
 def announce_new_features() -> str:
     """Generate JARVIS announcement for new features."""
     new_features = check_for_updates()
-    
+
     if not new_features:
         return ""
-    
+
     lines = [
         "Welcome to Heliox OS version " + VERSION + ".",
     ]
-    
+
     for feat in new_features[:3]:
         if "jarvis_announce" in feat:
             lines.append(feat["jarvis_announce"])
-    
+
     lines.append("Say 'What can you do?' to learn more.")
-    
+
     return " ".join(lines)
 
 

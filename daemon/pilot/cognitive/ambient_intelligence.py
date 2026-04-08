@@ -136,10 +136,10 @@ class AmbientIntelligenceEngine:
         self._state = AmbientState()
         self._history: list[dict[str, Any]] = []
         self._max_history = 200
-        
+
         # Callback for when suggestions are accepted/dismissed
         self._on_suggestion: Callable[[ProactiveSuggestion, str], Coroutine] | None = None
-        
+
         # Task tracking
         self._task_start_time: float = 0.0
         self._task_contexts: list[dict[str, Any]] = []
@@ -159,10 +159,10 @@ class AmbientIntelligenceEngine:
     ) -> None:
         """Update ambient state with current cognitive metrics."""
         now = time.time()
-        
+
         # Update cognitive trend
         self._update_trend(attention, stress, load)
-        
+
         # Track app changes for monotony detection
         if app_name and app_name != self._state.active_app:
             self._state.last_task_change = now
@@ -172,12 +172,12 @@ class AmbientIntelligenceEngine:
             # Increase monotony score over time
             time_on_task = (now - self._state.last_task_change) / 60.0
             self._state.monotony_score = min(1.0, time_on_task / 60.0)  # Max at 60 min
-        
+
         # Update task duration
         if self._task_start_time == 0.0:
             self._task_start_time = now
         self._state.current_task_duration_minutes = (now - self._task_start_time) / 60.0
-        
+
         # Record in history for pattern analysis
         self._history.append({
             "timestamp": now,
@@ -186,10 +186,10 @@ class AmbientIntelligenceEngine:
             "load": load,
             "app": app_name,
         })
-        
+
         if len(self._history) > self._max_history:
             self._history = self._history[-self._max_history:]
-        
+
         # Check if we should generate a suggestion
         await self._check_for_suggestions(attention, stress, load)
 
@@ -198,16 +198,16 @@ class AmbientIntelligenceEngine:
         if len(self._history) < 5:
             self._state.cognitive_trend = None
             return
-        
+
         recent = self._history[-10:]
         n = len(recent)
-        
+
         # Simple linear regression for slope
         x = list(range(n))
         avg_attention = sum(e["attention"] for e in recent) / n
         avg_stress = sum(e["stress"] for e in recent) / n
         avg_load = sum(e["load"] for e in recent) / n
-        
+
         # Calculate slopes
         def calc_slope(values: list[float]) -> float:
             if len(values) < 2:
@@ -216,26 +216,26 @@ class AmbientIntelligenceEngine:
             num = sum((x[i] - mean / (n - 1)) * (values[i] - mean) for i in range(n))
             den = sum((x[i] - mean / (n - 1)) ** 2 for i in range(n))
             return num / den if den != 0 else 0.0
-        
+
         slope_att = calc_slope([e["attention"] for e in recent])
         slope_stress = calc_slope([e["stress"] for e in recent])
         slope_load = calc_slope([e["load"] for e in recent])
-        
+
         # Determine direction
         avg_recent = sum(recent[-3:]) / 3
         avg_older = sum(recent[:3]) / 3
-        
+
         if abs(slope_stress) < 0.01:
             direction = "stable"
         elif slope_stress > 0:
             direction = "rising"
         else:
             direction = "falling"
-        
+
         # Confidence based on consistency
         std_stress = (sum((e["stress"] - avg_stress) ** 2 for e in recent) / n) ** 0.5
         confidence = max(0.0, 1.0 - std_stress)
-        
+
         self._state.cognitive_trend = CognitiveTrend(
             direction=direction,
             slope_attention=slope_att,
@@ -255,27 +255,27 @@ class AmbientIntelligenceEngine:
     ) -> None:
         """Check if conditions warrant a proactive suggestion."""
         now = time.time()
-        
+
         # Check cooldown
         if now - self._state.last_suggestion_time < SUGGESTION_COOLDOWN_SECONDS:
             return
-        
+
         # Check daily limit
         if self._state.suggestions_today >= MAX_SUGGESTIONS_PER_HOUR:
             return
-        
+
         # Generate suggestion based on conditions
         suggestion = self._evaluate_conditions(attention, stress, load)
-        
+
         if suggestion:
             self._state.last_suggestion_time = now
             self._state.suggestions_today += 1
-            
+
             logger.info(
                 "Ambient intelligence suggestion: type=%s, message='%s'",
                 suggestion.suggestion_type, suggestion.message,
             )
-            
+
             # Execute callback
             if self._on_suggestion:
                 await self._on_suggestion(suggestion, "presented")
@@ -287,9 +287,9 @@ class AmbientIntelligenceEngine:
         load: float,
     ) -> ProactiveSuggestion | None:
         """Evaluate current conditions to determine if a suggestion is warranted."""
-        
+
         trend = self._state.cognitive_trend
-        
+
         # Condition 1: Stress escalation
         if trend and trend.direction == "rising" and trend.slope_stress > STRESS_ESCALATION_THRESHOLD:
             return self._create_suggestion(
@@ -298,7 +298,7 @@ class AmbientIntelligenceEngine:
                 urgency="high",
                 action_options=["Take 5 min break", "Continue but slow down", "Dismiss"],
             )
-        
+
         # Condition 2: Long task duration
         if self._state.current_task_duration_minutes > TASK_DURATION_THRESHOLD_MINUTES:
             duration = int(self._state.current_task_duration_minutes)
@@ -309,7 +309,7 @@ class AmbientIntelligenceEngine:
                 action_options=["Take a break", "Continue working", "Save progress"],
                 context_data={"task_duration": duration},
             )
-        
+
         # Condition 3: High cognitive load
         if load > LOAD_SPIKE_THRESHOLD:
             return self._create_suggestion(
@@ -319,7 +319,7 @@ class AmbientIntelligenceEngine:
                 action_options=["Simplify UI", "Show only essentials", "Dismiss"],
                 context_data={"current_load": load},
             )
-        
+
         # Condition 4: Monotony (same app too long)
         if self._state.monotony_score > MONOTONY_THRESHOLD:
             return self._create_suggestion(
@@ -329,7 +329,7 @@ class AmbientIntelligenceEngine:
                 action_options=["Show context", "Continue", "Switch task"],
                 context_data={"app": self._state.active_app, "monotony": self._state.monotony_score},
             )
-        
+
         # Condition 5: Low attention (likely distracted)
         if attention < 0.3 and load < 0.4:
             return self._create_suggestion(
@@ -338,7 +338,7 @@ class AmbientIntelligenceEngine:
                 urgency="low",
                 action_options=["I'm ready now", "Wait and retry", "Cancel"],
             )
-        
+
         # Condition 6: Biometric-based (from learning loop)
         if self._biometric:
             rec = self._biometric.get_interaction_recommendation()
@@ -349,7 +349,7 @@ class AmbientIntelligenceEngine:
                     urgency="low",
                     confidence=rec.confidence,
                 )
-        
+
         return None
 
     def _create_suggestion(
@@ -385,7 +385,7 @@ class AmbientIntelligenceEngine:
         elif response == "dismissed":
             suggestion.dismissed = True
             logger.info("User dismissed suggestion: %s", suggestion.suggestion_type)
-        
+
         # If biometric loop available, provide feedback
         if self._biometric:
             self._biometric.record_interaction_feedback(

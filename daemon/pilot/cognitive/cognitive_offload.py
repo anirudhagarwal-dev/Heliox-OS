@@ -118,7 +118,7 @@ class CognitiveOffloader:
         self._current_workflow: Workflow | None = None
         self._state = OffloadState()
         self._action_history: list[dict[str, Any]] = []
-        
+
         # Settings
         self._enabled = True
         self._auto_surface = True
@@ -140,12 +140,12 @@ class CognitiveOffloader:
         """Update current cognitive load. Returns True if offloading triggered."""
         self._state.current_load = load
         self._state.is_overloaded = load > LOAD_THRESHOLD_HIGH
-        
+
         if self._state.is_overloaded and self._auto_surface:
             self._state.last_offload_time = time.time()
             self._state.offload_count_today += 1
             return True
-        
+
         return False
 
     # ── Memory Anchor Management ──
@@ -160,7 +160,7 @@ class CognitiveOffloader:
     ) -> MemoryAnchor:
         """Create a new memory anchor."""
         now = time.time()
-        
+
         anchor = MemoryAnchor(
             anchor_id=f"anchor_{int(now * 1000)}",
             anchor_type=anchor_type,
@@ -172,23 +172,23 @@ class CognitiveOffloader:
             timestamp=now,
             expires_at=now + (ANCHOR_RETENTION_HOURS * 3600),
         )
-        
+
         self._anchors.append(anchor)
         self._cleanup_anchors()
-        
+
         logger.info("Created memory anchor: %s (%s)", title, anchor_type)
-        
+
         return anchor
 
     def get_relevant_anchors(self, max_count: int = 5) -> list[MemoryAnchor]:
         """Get anchors relevant to current cognitive state."""
         if not self._state.is_overloaded:
             return []
-        
+
         # Sort by importance and recency
         relevant = [a for a in self._anchors if not a.is_expired()]
         relevant.sort(key=lambda a: (a.importance, a.timestamp), reverse=True)
-        
+
         return relevant[:max_count]
 
     def recall_anchor(self, anchor_id: str) -> MemoryAnchor | None:
@@ -204,7 +204,7 @@ class CognitiveOffloader:
         """Remove expired and excess anchors."""
         # Remove expired
         self._anchors = [a for a in self._anchors if not a.is_expired()]
-        
+
         # Keep only MAX_ANCHORS most important
         if len(self._anchors) > MAX_ANCHORS:
             self._anchors.sort(key=lambda a: (a.importance, a.timestamp), reverse=True)
@@ -215,7 +215,7 @@ class CognitiveOffloader:
     def start_workflow(self, name: str, context: str = "") -> str:
         """Start tracking a new multi-step workflow."""
         now = time.time()
-        
+
         workflow = Workflow(
             workflow_id=f"wf_{int(now * 1000)}",
             name=name,
@@ -223,32 +223,32 @@ class CognitiveOffloader:
             created_at=now,
             last_step_time=now,
         )
-        
+
         self._workflows.append(workflow)
         self._current_workflow = workflow
-        
+
         logger.info("Started workflow: %s", name)
-        
+
         return workflow.workflow_id
 
     def add_workflow_step(self, step_name: str, step_data: dict[str, Any] | None = None) -> None:
         """Add a step to the current workflow."""
         if not self._current_workflow:
             return
-        
+
         now = time.time()
-        
+
         step = {
             "step": len(self._current_workflow.steps) + 1,
             "name": step_name,
             "data": step_data or {},
             "timestamp": now,
         }
-        
+
         self._current_workflow.steps.append(step)
         self._current_workflow.current_step = len(self._current_workflow.steps)
         self._current_workflow.last_step_time = now
-        
+
         # Create anchor for important steps
         if len(self._current_workflow.steps) == WORKFLOW_MIN_STEPS:
             self.create_anchor(
@@ -263,10 +263,10 @@ class CognitiveOffloader:
         """Mark the current workflow as complete."""
         if not self._current_workflow:
             return None
-        
+
         self._current_workflow.completed = True
         self._current_workflow.total_steps = len(self._current_workflow.steps)
-        
+
         # Create completion anchor
         self.create_anchor(
             anchor_type="result",
@@ -275,12 +275,12 @@ class CognitiveOffloader:
             details={"workflow_id": self._current_workflow.workflow_id},
             importance=0.7,
         )
-        
+
         completed = self._current_workflow
         self._current_workflow = None
-        
+
         logger.info("Completed workflow: %s", completed.name)
-        
+
         return completed
 
     def get_active_workflows(self) -> list[Workflow]:
@@ -300,18 +300,18 @@ class CognitiveOffloader:
     def record_action(self, action_type: str, details: dict[str, Any]) -> None:
         """Record an action for context."""
         now = time.time()
-        
+
         self._action_history.append({
             "timestamp": now,
             "action_type": action_type,
             "details": details,
             "load": self._state.current_load,
         })
-        
+
         # Keep last 100 actions
         if len(self._action_history) > 100:
             self._action_history = self._action_history[-100:]
-        
+
         # Create anchors for high-load actions
         if self._state.current_load > LOAD_THRESHOLD_MEDIUM:
             self.create_anchor(
@@ -333,14 +333,14 @@ class CognitiveOffloader:
         """Get the complete offload surface for the UI."""
         if not self._state.is_overloaded:
             return {"active": False, "anchors": [], "workflows": []}
-        
+
         anchors = self.get_relevant_anchors(max_count=8)
         workflows = self.get_active_workflows()
-        
+
         # Build context summary
         recent_context = self.get_recent_context(minutes=60)
         context_summary = self._build_context_summary(recent_context)
-        
+
         return {
             "active": True,
             "current_load": round(self._state.current_load, 2),
@@ -354,10 +354,10 @@ class CognitiveOffloader:
         """Build a summary of recent context."""
         if not recent_actions:
             return "No recent context available."
-        
+
         action_types = [a["action_type"] for a in recent_actions[-10:]]
         summary = f"Recent: {', '.join(set(action_types))}"
-        
+
         return summary[:200]
 
     def _generate_suggestions(
@@ -367,16 +367,16 @@ class CognitiveOffloader:
     ) -> list[str]:
         """Generate suggestions based on current state."""
         suggestions = []
-        
+
         if anchors:
             suggestions.append(f"Recall {len(anchors)} memory anchors from recent work")
-        
+
         if workflows:
             suggestions.append(f"Continue {len(workflows)} incomplete workflow(s)")
-        
+
         if self._state.current_load > 0.9:
             suggestions.append("Take a short break to reset cognitive load")
-        
+
         return suggestions
 
     # ── Stats ──

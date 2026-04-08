@@ -94,17 +94,17 @@ class NeuralWorkspace:
     gaze: GazeData | None = None
     audio: AudioToneData | None = None
     input_dynamics: InputDynamicsData | None = None
-    
+
     # Fused metrics
     attention_focus: float = 0.5  # Where is user looking
     cognitive_state: str = "unknown"  # derived state
     emotional_state: str = "neutral"
     engagement_level: float = 0.5
-    
+
     # Predictions
     predicted_need: str = ""  # "help", "break", "continue", "switch"
     prediction_confidence: float = 0.0
-    
+
     timestamp: float = field(default_factory=time.time)
 
 
@@ -129,40 +129,40 @@ class EyeTracker:
         """Update gaze position from webcam."""
         if not self._enabled:
             return GazeData()
-        
+
         # Apply smoothing
         if self._last_gaze:
             x = EYE_MOVEMENT_SMOOTHING * x + (1 - EYE_MOVEMENT_SMOOTHING) * self._last_gaze.x
             y = EYE_MOVEMENT_SMOOTHING * y + (1 - EYE_MOVEMENT_SMOOTHING) * self._last_gaze.y
-        
+
         # Calculate shift
         shift = 0.0
         if self._last_gaze:
             shift = ((x - self._last_gaze.x) ** 2 + (y - self._last_gaze.y) ** 2) ** 0.5
-        
+
         # Update dwell time
         in_region = self._is_in_dwell_region(x, y)
         now = time.time()
-        
+
         if in_region and self._dwell_start > 0:
             dwell = now - self._dwell_start
         else:
             self._dwell_start = now if in_region else 0.0
             dwell = 0.0
-        
+
         gaze = GazeData(
             x=x, y=y,
             dwell_time=dwell,
             is_on_screen=True,
             shift_magnitude=shift,
         )
-        
+
         self._last_gaze = gaze
         self._gaze_history.append(gaze)
-        
+
         if len(self._gaze_history) > 100:
             self._gaze_history = self._gaze_history[-100:]
-        
+
         return gaze
 
     def _is_in_dwell_region(self, x: float, y: float) -> bool:
@@ -176,11 +176,11 @@ class EyeTracker:
         """Generate attention heat map from gaze history."""
         if not self._gaze_history:
             return {"center": 0.5, "periphery": 0.3, "corners": 0.2}
-        
+
         # Simple zone analysis
         center_count = sum(1 for g in self._gaze_history if 0.3 <= g.x <= 0.7 and 0.3 <= g.y <= 0.7)
         total = len(self._gaze_history)
-        
+
         return {
             "center": center_count / total,
             "periphery": (total - center_count) / total * 0.5,
@@ -207,11 +207,11 @@ class AudioToneAnalyzer:
         """Analyze audio chunk for emotional state."""
         if not self._enabled or audio_chunk is None:
             return AudioToneData()
-        
+
         # Placeholder: In production, would use a real audio analysis model
         # For now, return simulated data based on basic heuristics
         energy = self._estimate_energy(audio_chunk)
-        
+
         # Simulate emotion detection
         if energy > 0.7:
             emotion = "excited"
@@ -225,7 +225,7 @@ class AudioToneAnalyzer:
         else:
             emotion = "neutral"
             confidence = 0.6
-        
+
         audio = AudioToneData(
             energy=energy,
             pitch_avg=0.5,
@@ -234,15 +234,15 @@ class AudioToneAnalyzer:
             emotion_confidence=confidence,
             volume=energy,
         )
-        
+
         self._audio_history.append(audio)
-        
+
         if len(self._audio_history) > 100:
             self._audio_history = self._audio_history[-100:]
-        
+
         if energy > AUDIO_ENERGY_THRESHOLD:
             self._last_voice_time = time.time()
-        
+
         return audio
 
     def _estimate_energy(self, audio_chunk: bytes) -> float:
@@ -255,21 +255,21 @@ class AudioToneAnalyzer:
             samples = struct.unpack(f"{len(audio_chunk)//2}h", audio_chunk)
             rms = (sum(s*s for s in samples) / len(samples)) ** 0.5
             return min(1.0, rms / 32768.0 * 2)
-        except:
+        except Exception:
             return 0.5
 
     def get_emotion_trend(self) -> tuple[str, float]:
         """Get dominant emotion over recent history."""
         if not self._audio_history:
             return "neutral", 0.0
-        
+
         recent = self._audio_history[-10:]
         emotions = [a.emotion for a in recent]
-        
+
         # Most common
         emotion = max(set(emotions), key=emotions.count)
         confidence = sum(1 for e in recent if e.emotion == emotion) / len(recent)
-        
+
         return emotion, confidence
 
 
@@ -329,7 +329,7 @@ class InputDynamicsMonitor:
         """Remove events older than 60 seconds."""
         now = time.time()
         cutoff = now - 60
-        
+
         self._keystrokes = [t for t in self._keystrokes if t > cutoff]
         self._mouse_movements = [(x, y, t) for x, y, t in self._mouse_movements if t > cutoff]
         self._click_times = [t for t in self._click_times if t > cutoff]
@@ -338,16 +338,16 @@ class InputDynamicsMonitor:
     def get_dynamics(self) -> InputDynamicsData:
         """Get current input dynamics metrics."""
         now = time.time()
-        
+
         # Keystroke rate (keys per minute in last 60s)
         recent_keys = [t for t in self._keystrokes if now - t < 60]
         keystroke_rate = len(recent_keys) if recent_keys else 0.0
-        
+
         # Mouse velocity
         recent_mouse = [(x, y, t) for x, y, t in self._mouse_movements if now - t < 10]
         if len(recent_mouse) >= 2:
             total_dist = sum(
-                ((recent_mouse[i][0] - recent_mouse[i-1][0])**2 + 
+                ((recent_mouse[i][0] - recent_mouse[i-1][0])**2 +
                  (recent_mouse[i][1] - recent_mouse[i-1][1])**2) ** 0.5
                 for i in range(1, len(recent_mouse))
             )
@@ -355,23 +355,23 @@ class InputDynamicsMonitor:
             mouse_velocity = total_dist / time_span if time_span > 0 else 0.0
         else:
             mouse_velocity = 0.0
-        
+
         # Idle time
         idle_time = now - self._last_input_time
-        
+
         # Click frequency
         recent_clicks = [t for t in self._click_times if now - t < 60]
         click_frequency = len(recent_clicks)
-        
+
         # Scroll frequency
         recent_scrolls = [t for t in self._scroll_times if now - t < 60]
         scroll_frequency = len(recent_scrolls)
-        
+
         # Engagement score (derived)
         engagement = self._calculate_engagement(
             keystroke_rate, mouse_velocity, idle_time, click_frequency
         )
-        
+
         return InputDynamicsData(
             keystroke_rate=keystroke_rate,
             mouse_movement=mouse_velocity,
@@ -394,7 +394,7 @@ class InputDynamicsMonitor:
         mouse_score = min(1.0, mouse_velocity / 500.0)  # 500 px/s = max
         idle_score = max(0.0, 1.0 - idle_time / 30.0)  # 30s idle = 0
         click_score = min(1.0, click_frequency / 10.0)  # 10 clicks/min = max
-        
+
         return (keystroke_score * 0.3 + mouse_score * 0.2 + idle_score * 0.3 + click_score * 0.2)
 
 
@@ -408,7 +408,7 @@ class NeuralBridge:
         self._eye = EyeTracker()
         self._audio = AudioToneAnalyzer()
         self._input = InputDynamicsMonitor()
-        
+
         self._workspace = NeuralWorkspace()
         self._prediction_history: list[dict[str, Any]] = []
 
@@ -449,18 +449,18 @@ class NeuralBridge:
     def compute_workspace(self) -> NeuralWorkspace:
         """Compute unified neural workspace from all modalities."""
         now = time.time()
-        
+
         # Get individual states
         gaze = self._workspace.gaze
         audio = self._workspace.audio
         input_dyn = self._workspace.input_dynamics
-        
+
         # Calculate fused metrics
         attention_focus = 0.5
         if gaze:
             # Focus on center of screen
             attention_focus = 1.0 - ((gaze.x - 0.5) ** 2 + (gaze.y - 0.5) ** 2) ** 0.5 / 0.7
-        
+
         # Cognitive state derivation
         cognitive_state = "focused"
         if input_dyn:
@@ -470,24 +470,24 @@ class NeuralBridge:
                 cognitive_state = "highly_engaged"
             elif input_dyn.engagement_score < 0.3:
                 cognitive_state = "disengaged"
-        
+
         # Emotional state
         emotional_state = "neutral"
         if audio:
             emotional_state = audio.emotion
-        
+
         # Engagement level
         engagement = 0.5
         if input_dyn:
             engagement = input_dyn.engagement_score
         if audio and audio.energy > 0.3:
             engagement = min(1.0, engagement + 0.1)
-        
+
         # Predict user need
         predicted_need, confidence = self._predict_user_need(
             attention_focus, cognitive_state, emotional_state, engagement
         )
-        
+
         # Update workspace
         self._workspace.attention_focus = attention_focus
         self._workspace.cognitive_state = cognitive_state
@@ -496,7 +496,7 @@ class NeuralBridge:
         self._workspace.predicted_need = predicted_need
         self._workspace.prediction_confidence = confidence
         self._workspace.timestamp = now
-        
+
         return self._workspace
 
     def _predict_user_need(
@@ -507,27 +507,27 @@ class NeuralBridge:
         engagement: float,
     ) -> tuple[str, float]:
         """Predict what the user needs based on workspace state."""
-        
+
         # High stress + low engagement = need help
         if emotional_state in ("stressed", "angry") and engagement < 0.5:
             return "help", 0.75
-        
+
         # High engagement + high focus = continue
         if engagement > 0.7 and attention_focus > 0.7:
             return "continue", 0.8
-        
+
         # Idle for long time = might need switch
         if cognitive_state == "idle":
             return "switch", 0.6
-        
+
         # Low engagement = might need break
         if engagement < 0.3:
             return "break", 0.6
-        
+
         # Emotional distress
         if emotional_state in ("sad", "frustrated"):
             return "support", 0.7
-        
+
         return "continue", 0.5
 
     # ── Getters ──

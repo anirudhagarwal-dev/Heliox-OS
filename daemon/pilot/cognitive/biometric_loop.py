@@ -170,7 +170,7 @@ class BiometricLearningLoop:
         self._store = store or BiometricStore()
         self._fingerprint = self._load_or_create_fingerprint()
         self._samples: list[dict[str, Any]] = self._store.load_samples(user_id)
-        
+
         # Real-time feedback buffer
         self._pending_feedback: list[dict[str, Any]] = []
         self._feedback_weights: dict[str, float] = {
@@ -198,7 +198,7 @@ class BiometricLearningLoop:
         """Record a cognitive state sample with timestamp."""
         hour = datetime.now().hour
         weekday = _WEEKDAYS[datetime.now().weekday()]
-        
+
         sample = {
             "timestamp": time.time(),
             "hour": hour,
@@ -208,17 +208,17 @@ class BiometricLearningLoop:
             "load": load,
             "context": context,
         }
-        
+
         self._samples.append(sample)
-        
+
         # Update patterns incrementally
         self._update_hourly_pattern(hour, attention, stress, load)
         self._update_weekday_pattern(weekday, hour, attention, stress, load)
-        
+
         # Recalculate fingerprint periodically
         if len(self._samples) % 10 == 0:
             self._recalculate_fingerprint()
-        
+
         # Persist
         self._store.save_samples(self._user_id, self._samples)
         self._store.save_fingerprint(self._fingerprint)
@@ -229,10 +229,10 @@ class BiometricLearningLoop:
         """Incrementally update hourly pattern with exponential moving average."""
         if hour not in self._fingerprint.weekly_patterns:
             self._fingerprint.weekly_patterns[hour] = HourlyPattern(hour=hour)
-        
+
         p = self._fingerprint.weekly_patterns[hour]
         alpha = 0.1  # Learning rate
-        
+
         p.avg_attention = alpha * attention + (1 - alpha) * p.avg_attention
         p.avg_stress = alpha * stress + (1 - alpha) * p.avg_stress
         p.avg_load = alpha * load + (1 - alpha) * p.avg_load
@@ -247,10 +247,10 @@ class BiometricLearningLoop:
         key = f"{weekday}_{hour}"
         if key not in self._fingerprint.weekday_patterns:
             self._fingerprint.weekday_patterns[key] = HourlyPattern(hour=hour)
-        
+
         p = self._fingerprint.weekday_patterns[key]
         alpha = 0.1
-        
+
         p.avg_attention = alpha * attention + (1 - alpha) * p.avg_attention
         p.avg_stress = alpha * stress + (1 - alpha) * p.avg_stress
         p.avg_load = alpha * load + (1 - alpha) * p.avg_load
@@ -261,15 +261,15 @@ class BiometricLearningLoop:
     def _recalculate_fingerprint(self) -> None:
         """Recalculate optimal hours, peak hours, and recovery hours."""
         patterns = self._fingerprint.weekly_patterns
-        
+
         if len(patterns) < 3:
             return
-        
+
         # Find optimal interaction hours (high attention, low stress)
         optimal = []
         peak = []
         recovery = []
-        
+
         for hour, p in patterns.items():
             if p.confidence < 0.3:
                 continue
@@ -282,20 +282,20 @@ class BiometricLearningLoop:
             # Recovery: low load, low stress
             if p.avg_load < 0.4 and p.avg_stress < 0.3:
                 recovery.append((hour, 1.0 - p.avg_load))
-        
+
         self._fingerprint.optimal_interaction_hours = [h for h, _ in sorted(optimal, key=lambda x: x[1], reverse=True)[:4]]
         self._fingerprint.peak_productivity_hours = [h for h, _ in sorted(peak, key=lambda x: x[1], reverse=True)[:3]]
         self._fingerprint.recovery_hours = [h for h, _ in sorted(recovery, key=lambda x: x[1], reverse=True)[:3]]
-        
+
         # Calculate baseline and sensitivity
         total_attention = sum(p.avg_attention for p in patterns.values()) / len(patterns)
         total_stress = sum(p.avg_stress for p in patterns.values()) / len(patterns)
         self._fingerprint.avg_cognitive_baseline = total_attention
         self._fingerprint.stress_sensitivity = min(1.0, total_stress / 0.5)
-        
+
         self._fingerprint.total_samples = len(self._samples)
         self._fingerprint.last_sync = time.time()
-        
+
         logger.info(
             "Biometric fingerprint updated: optimal_hours=%s, peak_hours=%s",
             self._fingerprint.optimal_interaction_hours,
@@ -312,14 +312,14 @@ class BiometricLearningLoop:
     ) -> None:
         """Record user response to refine future predictions."""
         weight = self._feedback_weights.get(user_response, 0.0)
-        
+
         # Adjust the confidence of optimal hours based on feedback
         if interaction_type == "proactive" and user_response == "ignored":
             # Reduce confidence for proactive suggestions
             for h in self._fingerprint.optimal_interaction_hours:
                 if h in self._fingerprint.weekly_patterns:
                     self._fingerprint.weekly_patterns[h].confidence *= 0.9
-        
+
         elif interaction_type == "proactive" and user_response == "accepted":
             # Increase confidence for accepted suggestions
             current_hour = datetime.now().hour
@@ -327,9 +327,9 @@ class BiometricLearningLoop:
                 self._fingerprint.weekly_patterns[current_hour].confidence = min(
                     1.0, self._fingerprint.weekly_patterns[current_hour].confidence + 0.1
                 )
-        
+
         self._store.save_fingerprint(self._fingerprint)
-        
+
         logger.info(
             "Feedback recorded: type=%s, response=%s, weight=%.2f",
             interaction_type, user_response, weight,
@@ -341,11 +341,11 @@ class BiometricLearningLoop:
         """Get recommendation for whether to interact now."""
         current_hour = datetime.now().hour
         weekday = _WEEKDAYS[datetime.now().weekday()]
-        
+
         # Check hourly pattern
         hour_key = f"{weekday}_{current_hour}"
         pattern = self._fingerprint.weekday_patterns.get(hour_key) or self._fingerprint.weekly_patterns.get(current_hour)
-        
+
         if not pattern or pattern.confidence < 0.3:
             return InteractionRecommendation(
                 recommended=True,
@@ -353,11 +353,11 @@ class BiometricLearningLoop:
                 confidence=0.3,
                 reason="Insufficient data for pattern prediction",
             )
-        
+
         attention = pattern.avg_attention
         stress = pattern.avg_stress
         load = pattern.avg_load
-        
+
         # Decision logic
         if current_hour in self._fingerprint.optimal_interaction_hours:
             if stress < 0.4 and load < 0.7:
@@ -368,7 +368,7 @@ class BiometricLearningLoop:
                     reason=f"Optimal interaction time (hour {current_hour})",
                     suggested_action="Proactive assistance appropriate",
                 )
-        
+
         if current_hour in self._fingerprint.recovery_hours:
             return InteractionRecommendation(
                 recommended=False,
@@ -377,7 +377,7 @@ class BiometricLearningLoop:
                 reason="User is in recovery mode",
                 optimal_time_estimate=f"Try again in {60 - datetime.now().minute} minutes",
             )
-        
+
         if load > 0.8 or stress > 0.7:
             return InteractionRecommendation(
                 recommended=False,
@@ -386,7 +386,7 @@ class BiometricLearningLoop:
                 reason="High cognitive load detected",
                 optimal_time_estimate="Wait for cognitive load to decrease",
             )
-        
+
         # Default: reactive mode
         return InteractionRecommendation(
             recommended=True,
@@ -399,16 +399,16 @@ class BiometricLearningLoop:
         """Get optimal interaction windows for the next N minutes."""
         now = datetime.now()
         windows = []
-        
+
         for offset in range(0, minutes_ahead, 15):
             check_time = now + timedelta(minutes=offset)
             hour = check_time.hour
-            
+
             pattern = self._fingerprint.weekly_patterns.get(hour)
             if pattern and pattern.confidence > 0.3:
                 score = pattern.avg_attention - pattern.avg_stress * 0.5 - pattern.avg_load * 0.3
                 windows.append((hour, score))
-        
+
         return sorted(windows, key=lambda x: x[1], reverse=True)[:4]
 
     # ── Stats ──

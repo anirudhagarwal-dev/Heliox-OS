@@ -107,21 +107,21 @@ class NeuralAvatar:
     user_id: str
     base_name: str = "JARVIS"
     version: str = "1.0"
-    
+
     # Current state
     current_style: CommunicationStyle = field(default_factory=CommunicationStyle)
     current_ui: UIPreference = field(default_factory=UIPreference)
     current_energy: str = ENERGY_MEDIUM
-    
+
     # Historical data
     daily_patterns: list[DailyPattern] = field(default_factory=list)
     weekly_styles: list[CommunicationStyle] = field(default_factory=list)
     weekly_uis: list[UIPreference] = field(default_factory=list)
-    
+
     # Adaptation
     adaptation_rate: float = 0.3  # How fast to adapt
     stability: float = 0.7  # How stable the persona is
-    
+
     # Metadata
     created_at: float = field(default_factory=time.time)
     last_update: float = field(default_factory=time.time)
@@ -224,7 +224,7 @@ class EvolvingPersonaEngine:
         self._user_id = user_id
         self._store = store or PersonaStore()
         self._avatar = self._load_or_create_avatar()
-        
+
         # Real-time adaptation buffer
         self._today_interactions: list[dict[str, Any]] = []
         self._current_daily_pattern: DailyPattern | None = None
@@ -247,20 +247,20 @@ class EvolvingPersonaEngine:
         """Record an interaction to build today's pattern."""
         now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")
-        
+
         # Initialize today's pattern if needed
         if not self._current_daily_pattern or self._current_daily_pattern.date != date_str:
             self._current_daily_pattern = DailyPattern(date=date_str)
-        
+
         # Update running averages
         p = self._current_daily_pattern
         n = p.interaction_count + 1
-        
+
         p.avg_attention = (p.avg_attention * p.interaction_count + attention) / n
         p.avg_stress = (p.avg_stress * p.interaction_count + stress) / n
         p.avg_load = (p.avg_load * p.interaction_count + load) / n
         p.interaction_count = n
-        
+
         # Track proactive acceptance
         if user_response:
             old_rate = p.proactive_acceptance_rate
@@ -268,7 +268,7 @@ class EvolvingPersonaEngine:
                 p.proactive_acceptance_rate = (old_rate * (n - 1) + 1.0) / n
             elif user_response == "dismissed":
                 p.proactive_acceptance_rate = (old_rate * (n - 1) + 0.0) / n
-        
+
         # Determine energy level
         if p.avg_attention > 0.7 and p.avg_stress < 0.4:
             p.energy_level = ENERGY_HIGH
@@ -276,7 +276,7 @@ class EvolvingPersonaEngine:
             p.energy_level = ENERGY_LOW
         else:
             p.energy_level = ENERGY_MEDIUM
-        
+
         # Determine mood
         if p.avg_stress > 0.6:
             p.dominant_mood = "stressed"
@@ -286,9 +286,9 @@ class EvolvingPersonaEngine:
             p.dominant_mood = "tired"
         else:
             p.dominant_mood = "neutral"
-        
+
         self._avatar.total_interactions += 1
-        
+
         # Store interaction
         self._today_interactions.append({
             "timestamp": time.time(),
@@ -302,18 +302,18 @@ class EvolvingPersonaEngine:
         """Update communication style based on current state."""
         if not self._current_daily_pattern:
             return self._avatar.current_style
-        
+
         stress = self._current_daily_pattern.avg_stress
         load = self._current_daily_pattern.avg_load
         energy = self._current_daily_pattern.energy_level
-        
+
         # High stress or load → more concise, more empathetic
         verbosity = 0.5
         if stress > 0.6 or load > 0.7:
             verbosity = 0.2  # Concise
         elif stress < 0.3 and load < 0.5:
             verbosity = 0.7  # Detailed
-        
+
         # Energy affects speed and formality
         speed = 0.5
         formality = 0.5
@@ -323,35 +323,35 @@ class EvolvingPersonaEngine:
         elif energy == ENERGY_LOW:
             speed = 0.3
             formality = 0.3
-        
+
         # Empathy: higher when stressed
         empathy = 0.5 + (stress * 0.3)
-        
+
         # Apply with adaptation rate (blend with current)
         alpha = self._avatar.adaptation_rate
-        
+
         style = CommunicationStyle(
             verbosity=alpha * verbosity + (1 - alpha) * self._avatar.current_style.verbosity,
             formality=alpha * formality + (1 - alpha) * self._avatar.current_style.formality,
             empathy=alpha * empathy + (1 - alpha) * self._avatar.current_style.empathy,
             speed=alpha * speed + (1 - alpha) * self._avatar.current_style.speed,
         )
-        
+
         return style
 
     def _update_ui_preference(self) -> UIPreference:
         """Update UI preferences based on current state."""
         if not self._current_daily_pattern:
             return self._avatar.current_ui
-        
+
         stress = self._current_daily_pattern.avg_stress
         load = self._current_daily_pattern.avg_load
-        
+
         # High stress → simpler UI
         visual_complexity = 0.5
         information_density = 0.5
         notification_level = "normal"
-        
+
         if stress > 0.6 or load > 0.7:
             visual_complexity = 0.2
             information_density = 0.3
@@ -360,10 +360,10 @@ class EvolvingPersonaEngine:
             visual_complexity = 0.7
             information_density = 0.6
             notification_level = "rich"
-        
+
         # Apply with adaptation rate
         alpha = self._avatar.adaptation_rate
-        
+
         ui = UIPreference(
             visual_complexity=alpha * visual_complexity + (1 - alpha) * self._avatar.current_ui.visual_complexity,
             information_density=alpha * information_density + (1 - alpha) * self._avatar.current_ui.information_density,
@@ -371,7 +371,7 @@ class EvolvingPersonaEngine:
             animation_preference=self._avatar.current_ui.animation_preference,
             color_scheme=self._avatar.current_ui.color_scheme,
         )
-        
+
         return ui
 
     # ── Avatar Update ──
@@ -380,35 +380,35 @@ class EvolvingPersonaEngine:
         """Update the neural avatar with current state."""
         # Update communication style
         self._avatar.current_style = self._update_communication_style()
-        
+
         # Update UI preference
         self._avatar.current_ui = self._update_ui_preference()
-        
+
         # Update energy
         if self._current_daily_pattern:
             self._avatar.current_energy = self._current_daily_pattern.energy_level
-        
+
         # Store today's pattern
         if self._current_daily_pattern:
             self._avatar.daily_patterns.append(self._current_daily_pattern)
-        
+
         # Keep only last 30 days
         if len(self._avatar.daily_patterns) > 30:
             self._avatar.daily_patterns = self._avatar.daily_patterns[-30:]
-        
+
         # Update weekly averages
         self._avatar.weekly_styles.append(self._avatar.current_style)
         self._avatar.weekly_uis.append(self._avatar.current_ui)
-        
+
         if len(self._avatar.weekly_styles) > 7:
             self._avatar.weekly_styles = self._avatar.weekly_styles[-7:]
             self._avatar.weekly_uis = self._avatar.weekly_uis[-7:]
-        
+
         self._avatar.last_update = time.time()
-        
+
         # Persist
         self._store.save_avatar(self._avatar)
-        
+
         logger.info(
             "Neural avatar updated: style=%s, energy=%s, interactions=%d",
             self._avatar.current_style.to_dict(),
@@ -423,7 +423,7 @@ class EvolvingPersonaEngine:
         hour = datetime.now().hour
         energy = self._avatar.current_energy
         stress = self._current_daily_pattern.avg_stress if self._current_daily_pattern else 0.5
-        
+
         # Time-based prefix
         if 6 <= hour < 12:
             time_greet = "Good morning"
@@ -433,7 +433,7 @@ class EvolvingPersonaEngine:
             time_greet = "Good evening"
         else:
             time_greet = "Hello"
-        
+
         # Energy-based modifier
         if energy == ENERGY_HIGH:
             energy_mod = "! Ready to tackle anything?"
@@ -441,11 +441,11 @@ class EvolvingPersonaEngine:
             energy_mod = ". Taking it easy today?"
         else:
             energy_mod = ". How can I help?"
-        
+
         # Stress-aware modifier
         if stress > 0.6:
             energy_mod = ". I'll keep things simple - just say the word."
-        
+
         return f"{time_greet}{energy_mod}"
 
     def format_response(
@@ -455,21 +455,21 @@ class EvolvingPersonaEngine:
     ) -> str:
         """Format a response based on current communication style."""
         style = self._avatar.current_style
-        
+
         if style.verbosity < 0.3:
             # Very concise
             return base_message[:100] + ("..." if len(base_message) > 100 else "")
-        
+
         if style.verbosity > 0.7 and include_details:
             # Detailed - add context
             return base_message + "\n\n[Additional context available if needed]"
-        
+
         return base_message
 
     def get_ui_config(self) -> dict[str, Any]:
         """Get UI configuration based on current preferences."""
         ui = self._avatar.current_ui
-        
+
         return {
             "visual_complexity": ui.visual_complexity,
             "information_density": ui.information_density,

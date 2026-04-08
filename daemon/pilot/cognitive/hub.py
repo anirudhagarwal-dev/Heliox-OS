@@ -11,7 +11,7 @@ This is the central integration point that combines:
 
 Usage:
     from pilot.cognitive.hub import CognitiveHub
-    
+
     hub = CognitiveHub()
     state = await hub.analyze("user is working on complex task")
     suggestion = await hub.get_proactive_suggestion()
@@ -24,13 +24,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from pilot.cognitive.biometric_loop import BiometricLearningLoop
 from pilot.cognitive.ambient_intelligence import AmbientIntelligenceEngine, ProactiveSuggestion
-from pilot.cognitive.neural_bridge import NeuralBridge, NeuralWorkspace
+from pilot.cognitive.biometric_loop import BiometricLearningLoop
+from pilot.cognitive.cognitive_handoff import CognitiveHandoffEngine
 from pilot.cognitive.cognitive_offload import CognitiveOffloader
 from pilot.cognitive.evolving_persona import EvolvingPersonaEngine
-from pilot.cognitive.cognitive_handoff import CognitiveHandoffEngine
-from pilot.cognitive.quantum_cognitive import QuantumCognitivePipeline, CognitiveOutput
+from pilot.cognitive.neural_bridge import NeuralBridge, NeuralWorkspace
+from pilot.cognitive.quantum_cognitive import CognitiveOutput, QuantumCognitivePipeline
 
 logger = logging.getLogger("pilot.cognitive.hub")
 
@@ -97,10 +97,10 @@ class CognitiveHub:
         self._user_id = user_id
         self._device_name = device_name
         self._config = HubConfig()
-        
+
         # Initialize all modules
         self._init_modules()
-        
+
         # Stats
         self._total_analyses = 0
 
@@ -111,37 +111,37 @@ class CognitiveHub:
             self._biometric = BiometricLearningLoop(self._user_id)
         else:
             self._biometric = None
-        
+
         # Ambient Intelligence
         if self._config.enable_ambient:
             self._ambient = AmbientIntelligenceEngine(self._biometric)
         else:
             self._ambient = None
-        
+
         # Neural Bridge (Multi-Modal)
         if self._config.enable_neural_bridge:
             self._neural_bridge = NeuralBridge()
         else:
             self._neural_bridge = None
-        
+
         # Cognitive Offloader
         if self._config.enable_offload:
             self._offloader = CognitiveOffloader()
         else:
             self._offloader = None
-        
+
         # Evolving Persona
         if self._config.enable_persona:
             self._persona = EvolvingPersonaEngine(self._user_id)
         else:
             self._persona = None
-        
+
         # Cognitive Handoff
         if self._config.enable_handoff:
             self._handoff = CognitiveHandoffEngine(self._device_name)
         else:
             self._handoff = None
-        
+
         # Quantum Pipeline
         if self._config.enable_quantum:
             self._quantum = QuantumCognitivePipeline()
@@ -158,9 +158,9 @@ class CognitiveHub:
         """Run comprehensive cognitive analysis through all modules."""
         self._total_analyses += 1
         now = time.time()
-        
+
         state = UnifiedCognitiveState()
-        
+
         # 1. Get core metrics from Quantum Pipeline
         if self._quantum and stimulus:
             output = await self._quantum.predict(stimulus)
@@ -174,7 +174,7 @@ class CognitiveHub:
             state.stress = 0.3
             state.load = 0.4
             state.confidence = 0.5
-        
+
         # 2. Update Biometric Loop
         if self._biometric:
             self._biometric.record_cognitive_sample(
@@ -186,7 +186,7 @@ class CognitiveHub:
             rec = self._biometric.get_interaction_recommendation()
             state.optimal_interaction = rec.recommended
             state.optimal_hours = self._biometric.get_optimal_window(30)
-        
+
         # 3. Update Ambient Intelligence
         if self._ambient:
             await self._ambient.update_cognitive_state(
@@ -195,7 +195,7 @@ class CognitiveHub:
                 state.load,
                 context,
             )
-        
+
         # 4. Update Neural Bridge
         if self._neural_bridge:
             self._neural_bridge.update_from_input()
@@ -204,13 +204,13 @@ class CognitiveHub:
             state.emotional_state = workspace.emotional_state
             state.engagement_level = workspace.engagement_level
             state.predicted_need = workspace.predicted_need
-        
+
         # 5. Update Offloader
         if self._offloader:
             self._offloader.update_load(state.load)
             state.is_overloaded = self._offloader._state.is_overloaded
             state.active_anchors = len(self._offloader.get_relevant_anchors())
-        
+
         # 6. Update Persona
         if self._persona:
             self._persona.record_interaction(
@@ -220,7 +220,7 @@ class CognitiveHub:
             )
             state.communication_style = self._persona._avatar.current_style.to_dict()
             state.ui_config = self._persona.get_ui_config()
-        
+
         # 7. Update Handoff
         if self._handoff:
             self._handoff.register_activity()
@@ -235,9 +235,9 @@ class CognitiveHub:
                 state.load,
                 state.stress,
             ) or ""
-        
+
         state.timestamp = now
-        
+
         return state
 
     # ── Proactive Suggestions ──
@@ -246,7 +246,7 @@ class CognitiveHub:
         """Get a proactive suggestion if warranted."""
         if not self._ambient:
             return None
-        
+
         # The ambient engine handles its own logic
         return None
 
@@ -286,7 +286,7 @@ class CognitiveHub:
                 interaction_type,
                 user_response,
             )
-        
+
         if self._persona:
             state = await self.analyze()
             self._persona.record_interaction(
@@ -363,28 +363,28 @@ class CognitiveHub:
 
     def get_stats(self) -> dict[str, Any]:
         stats = {"total_analyses": self._total_analyses}
-        
+
         if self._biometric:
             stats["biometric"] = self._biometric.get_stats()
-        
+
         if self._ambient:
             stats["ambient"] = self._ambient.get_stats()
-        
+
         if self._neural_bridge:
             stats["neural_bridge"] = self._neural_bridge.get_stats()
-        
+
         if self._offloader:
             stats["offloader"] = self._offloader.get_stats()
-        
+
         if self._persona:
             stats["persona"] = self._persona.get_stats()
-        
+
         if self._handoff:
             stats["handoff"] = self._handoff.get_stats()
-        
+
         if self._quantum:
             stats["quantum"] = self._quantum.get_stats()
-        
+
         return stats
 
 

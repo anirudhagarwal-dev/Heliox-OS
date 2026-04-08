@@ -63,10 +63,10 @@ class CognitiveOutput:
     cognitive_load: float = 0.4
     emotional_state: str = "neutral"
     confidence: float = 0.5
-    
+
     # Raw model output
     raw_output: dict[str, Any] = field(default_factory=dict)
-    
+
     # Timing
     latency_ms: float = 0.0
     model_used: str = ""
@@ -156,17 +156,17 @@ class TribeAdapter(CognitiveModelAdapter):
 
     async def predict(self, input_data: CognitiveInput) -> CognitiveOutput:
         from pilot.cognitive.tribe_engine import TribeEngine
-        
+
         t0 = time.time()
-        
+
         # Use TRIBE Engine
         engine = TribeEngine.get_instance()
         state = await engine.predict_cognitive_state(input_data.stimulus)
-        
+
         latency = (time.time() - t0) * 1000
         self._total_predictions += 1
         self._total_latency += latency
-        
+
         return CognitiveOutput(
             attention_score=state.attention_score,
             stress_level=state.stress_level,
@@ -219,31 +219,31 @@ class FallbackAdapter(CognitiveModelAdapter):
 
     async def predict(self, input_data: CognitiveInput) -> CognitiveOutput:
         t0 = time.time()
-        
+
         # Simple heuristic-based prediction
         stimulus = input_data.stimulus.lower()
-        
+
         # Stress detection from keywords
         stress = 0.3
         stress_keywords = ["urgent", "asap", "critical", "emergency", "immediately"]
         for kw in stress_keywords:
             if kw in stimulus:
                 stress = min(1.0, stress + 0.2)
-        
+
         # Attention estimation from length
         attention = 0.5
         if len(stimulus) > 100:
             attention = 0.7
         elif len(stimulus) < 20:
             attention = 0.4
-        
+
         # Load estimation
         load = min(1.0, len(stimulus) / 100.0)
-        
+
         latency = (time.time() - t0) * 1000
         self._total_predictions += 1
         self._total_latency += latency
-        
+
         return CognitiveOutput(
             attention_score=attention,
             stress_level=stress,
@@ -281,14 +281,14 @@ class QuantumCognitivePipeline:
         self._adapters: dict[str, CognitiveModelAdapter] = {}
         self._active_adapter: CognitiveModelAdapter | None = None
         self._fallback = FallbackAdapter()
-        
+
         # Plugin system
         self._preprocessors: list[Callable[[CognitiveInput], CognitiveInput]] = []
         self._postprocessors: list[Callable[[CognitiveOutput], CognitiveOutput]] = []
-        
+
         # Initialize with TRIBE if available
         self._initialize_adapters()
-        
+
         # Stats
         self._total_requests = 0
         self._failed_requests = 0
@@ -343,35 +343,35 @@ class QuantumCognitivePipeline:
     ) -> CognitiveOutput:
         """Run cognitive prediction through the pipeline."""
         self._total_requests += 1
-        
+
         # Build input
         input_data = CognitiveInput(
             stimulus=stimulus,
             modality=modality,
             source=source,
         )
-        
+
         # Run preprocessors
         for preprocessor in self._preprocessors:
             input_data = preprocessor(input_data)
-        
+
         # Get adapter
         adapter = self._active_adapter or self._fallback
-        
+
         try:
             # Run prediction
             output = await adapter.predict(input_data)
-            
+
             # Run postprocessors
             for postprocessor in self._postprocessors:
                 output = postprocessor(output)
-            
+
             return output
-            
+
         except Exception as e:
             self._failed_requests += 1
             logger.warning("Prediction failed: %s", e)
-            
+
             # Return fallback
             return await self._fallback.predict(input_data)
 
@@ -396,7 +396,7 @@ class QuantumCognitivePipeline:
 
     def get_stats(self) -> dict[str, Any]:
         active_model = self._active_adapter.get_info() if self._active_adapter else None
-        
+
         return {
             "active_model": active_model.name if active_model else None,
             "active_model_type": active_model.model_type if active_model else None,
@@ -440,20 +440,20 @@ class CognitivePlugin(ABC):
 
 
 # Example plugin interface usage:
-# 
+#
 # class MyPlugin(CognitivePlugin):
 #     @property
 #     def name(self) -> str:
 #         return "my_plugin"
-# 
+#
 #     @property
 #     def version(self) -> str:
 #         return "1.0"
-# 
+#
 #     def process(self, input_data: CognitiveInput) -> CognitiveInput:
 #         # Modify input
 #         input_data.metadata["processed_by"] = self.name
 #         return input_data
-# 
+#
 # pipeline = create_pipeline()
 # pipeline.add_preprocessor(MyPlugin().process)
