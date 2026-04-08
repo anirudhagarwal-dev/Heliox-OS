@@ -14,37 +14,84 @@ use tauri::Manager;
 /// Global handle to the Python daemon process so we can kill it on exit.
 struct DaemonProcess(Mutex<Option<Child>>);
 
+fn get_app_data_dir() -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    home.join(".heliox-os")
+}
+
+fn get_venv_python() -> std::path::PathBuf {
+    let venv_dir = get_app_data_dir().join("env");
+    #[cfg(target_os = "windows")]
+    {
+        venv_dir.join("Scripts").join("python.exe")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        venv_dir.join("bin").join("python3")
+    }
+}
+
 fn spawn_daemon() -> Option<Child> {
-    let mut possible_dirs = vec![std::path::PathBuf::from("daemon")];
-
-    // Safely build paths relative to the executable
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            possible_dirs.push(exe_dir.join("daemon"));
-            if let Some(p1) = exe_dir.parent() {
-                possible_dirs.push(p1.join("daemon"));
-                if let Some(p2) = p1.parent() {
-                    possible_dirs.push(p2.join("daemon"));
-                }
-            }
+    let data_dir = get_app_data_dir();
+    if !data_dir.exists() {
+        let _ = std::fs::create_dir_all(&data_dir);
+    }
+    
+    let python_exe = get_venv_python();
+    
+    // First-run setup: if the virtualenv python doesn't exist, build it
+    if !python_exe.exists() {
+        println!("[Heliox OS] First run detected. Creating Python virtual environment...");
+        let venv_dir = data_dir.join("env");
+        
+        // 1. Create VirtualEnv
+        let mut venv_cmd = Command::new("python");
+        #[cfg(not(target_os = "windows"))]
+        let mut venv_cmd = Command::new("python3");
+        
+        // Suppress window popup on windows for the setup script
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            venv_cmd.creation_flags(0x08000000);
         }
+
+        let status = venv_cmd.args(["-m", "venv", venv_dir.to_str().unwrap()]).status();
+        if status.is_err() || !status.unwrap().success() {
+            eprintln!("[Heliox OS] Error: Failed to create virtual environment. Is Python installed?");
+            return None;
+        }
+
+        // 2. Install pilot-daemon
+        println!("[Heliox OS] Installing AI backend into virtual environment...");
+        let mut pip_exe = venv_dir.join("bin").join("pip");
+        #[cfg(target_os = "windows")]
+        { pip_exe = venv_dir.join("Scripts").join("pip.exe"); }
+
+        let mut pip_cmd = Command::new(&pip_exe);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            pip_cmd.creation_flags(0x08000000);
+        }
+        
+        let install_status = pip_cmd
+            .args(["install", "pilot-daemon"])
+            .status();
+
+        if install_status.is_err() || !install_status.unwrap().success() {
+            eprintln!("[Heliox OS] Error: Failed to install pilot-daemon.");
+            return None;
+        }
+        println!("[Heliox OS] First run setup complete.");
     }
-
-    if let Some(home) = dirs::home_dir() {
-        possible_dirs.push(home.join(".heliox-os").join("daemon"));
-    }
-
-    let daemon_dir = possible_dirs.into_iter().find(|d| d.join("pilot").exists());
-
-    let mut cmd = Command::new("python");
+    
+    // 3. Boot the daemon using the isolated virtual environment safely
+    let mut cmd = Command::new(&python_exe);
     cmd.args(["-m", "pilot.server"])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-
-    if let Some(dir) = daemon_dir {
-        cmd.current_dir(&dir);
-    }
 
     #[cfg(target_os = "windows")]
     {
@@ -55,9 +102,9 @@ fn spawn_daemon() -> Option<Child> {
     let child = cmd.spawn().ok();
 
     if child.is_some() {
-        println!("[Heliox OS] Python daemon spawned successfully");
+        println!("[Heliox OS] AI daemon spawned successfully from virtualenv");
     } else {
-        eprintln!("[Heliox OS] Warning: Could not spawn Python daemon. Is Python installed?");
+        eprintln!("[Heliox OS] Warning: Could not spawn Python daemon.");
     }
 
     child

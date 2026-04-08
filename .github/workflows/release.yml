@@ -90,13 +90,12 @@ jobs:
           releaseBody: |
             ## Heliox OS ${{ github.ref_name }}
 
-            ### Download & Install
+            ### Download & Install (Auto-Setup Architect)
             1. **Install Python 3.11+** on your system (if not already installed)
-            2. Install the AI backend: `pip install pilot-daemon` or `pip install -e daemon/`
-            3. Download the installer for your OS below
-            4. Run the installer and launch Heliox OS
-            5. The app will **automatically start the AI daemon** in the background!
-            6. Enter your API key (Gemini/OpenAI/Claude) in Settings
+            2. Download the installer for your OS below
+            3. Run the installer and launch Heliox OS
+            4. The app will **automatically build a Virtual Environment and install the AI backend** for you on first launch!
+            5. Enter your API key (Gemini/OpenAI/Claude) in Settings
 
             ### What's New
             ${{ github.event.head_commit.message }}
