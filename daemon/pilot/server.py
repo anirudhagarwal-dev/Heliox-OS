@@ -246,12 +246,8 @@ class PilotServer:
                 self._executor._stress_gate = self._stress_gate
             if self._fusion:
                 self._fusion._intent_predictor = self._intent_predictor
-            # NOTE: TRIBE injection into screen_vision is disabled because
-            # the 2-second prediction cycle downloads LLaMA tokenizer metadata
-            # from HuggingFace on every call, eventually deadlocking the event loop.
-            # TODO: fix TRIBE to cache tokenizer locally, then re-enable.
-            # if getattr(self, "_screen_vision", None):
-            #     self._screen_vision._tribe_engine = self._tribe_engine
+            if getattr(self, "_screen_vision", None):
+                self._screen_vision._tribe_engine = self._tribe_engine
 
             # Attempt background model load (non-blocking)
             asyncio.create_task(self._tribe_engine.load_model())

@@ -48,19 +48,18 @@ Unlike simple command runners, Heliox OS is a **true agentic system** inspired b
 6. **Reflector** — Self-improvement engine learns from successes and failures.
 7. **Security** — Five-tier permission system with confirmation gates and rollback support.
 
-## 🤖 JARVIS Mode (New!)
+## 🤖 JARVIS Autonomy (v0.7.1)
 
-Heliox OS now includes a futuristic, Iron Man-style interface:
+Heliox OS has achieved true proactive autonomy, transitioning from a reactive assistant to an invisible, always-on background intelligence system natively integrated into your OS:
 
-- 🎤 **Voice Control**: Push-to-talk or use the always-on **"Hey Heliox"** wake word.
-- 🗣️ **Text-to-Speech**: Heliox OS speaks its responses aloud to you.
-- 🤚 **30+ Hand Gestures**: Control your PC via webcam — static poses (Palm, Thumbs Up/Down, Peace, Fist, OK, Pinch, Vulcan, Devil Horns, Snap, etc.) and motion gestures (Swipe, Circular Volume, Palm Push/Pull, Two-Finger Workspace Switch).
-- 🖊️ **Air Drawing**: Point your index finger to draw glowing trails in the air.
-- 🌀 **Arc Reactor UI**: Animated spinning reactor logo, neural background, and particle explosion effects on task completion.
-- 📊 **Ambient HUD**: Holographic system monitor overlay for CPU, RAM, and Disk metrics.
-- 🔬 **ReAct Pipeline Visualizer**: Real-time animated graph showing the AI's reasoning process — each stage (Memory → Planning → Routing → Execution → Verification → Reflection) lights up as it runs.
+- 🧠 **Proactive Suggestion Engine**: Learns your daily workflows and pattern-matches your screen context to silently surface UI action suggestions (e.g., offering to summarize a long thread or launch an IDE when browsing issues) *before* you ask.
+- ⚡ **Fire-and-Forget Autonomous Jobs**: Spawn complex multi-step background tasks that decompose, execute, and verify completely independent of the UI or main event loop.
+- 👁️ **Always-On Screen Awareness**: Automatically bootstrapped computer vision that tracks your contextual state cross-platform, natively bridging exactly what you see into the LLM planner. 
+- 🎤 **Continuous Voice Listener**: Real-time push-free 'Hey Heliox' ambient wake-word dispatch for frictionless task execution.
+- 🤚 **30+ Hand Gestures & Air Drawing**: Control your PC via webcam with static poses (Palm, Pinch) and motion gestures (Two-Finger Swipe).
+- 🌀 **Arc Reactor UI & Ambient HUD**: Animated, immersive Tauri overlays responding contextually to system actions.
 
-## 🧠 TRIBE v2 Cognitive Engine Integrations (v0.5.1)
+## 🧠 TRIBE v2 Cognitive Engine Integrations (v0.7.1)
 
 Heliox OS is now fully neuro-adaptive, integrating Meta's **TRIBE v2 Cognitive Engine** directly into the operating logic:
 
