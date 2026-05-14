@@ -26,8 +26,8 @@ import aiosqlite
 if TYPE_CHECKING:
     from pilot.config import PilotConfig
 
-logger =logging.getLogger("pilot.models.cache")
-CACHE_SCHEMA_VERSION= 1
+logger = logging.getLogger("pilot.models.cache")
+CACHE_SCHEMA_VERSION = 1
 
 
 class LLMCache:
@@ -38,11 +38,11 @@ class LLMCache:
         Args:
             db_path: Path to the SQLite database file.
         """
-        self._db_path =db_path
+        self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
         self._initialized = False
 
-    async def initialize(self) ->None:
+    async def initialize(self) -> None:
         """Initialize the database connection and create schema if needed."""
         if self._initialized:
             return
@@ -82,16 +82,11 @@ class LLMCache:
             """
         )
 
-
         await self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cache_key ON llm_cache(prompt_hash, system_hash, model, provider, temperature, json_mode)"
         )
-        await self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_provider ON llm_cache(provider)"
-        )
-        await self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_model ON llm_cache(model)"
-        )
+        await self._conn.execute("CREATE INDEX IF NOT EXISTS idx_provider ON llm_cache(provider)")
+        await self._conn.execute("CREATE INDEX IF NOT EXISTS idx_model ON llm_cache(model)")
 
         await self._conn.commit()
 

@@ -158,8 +158,7 @@ async def main():
 
         # Gemini response
         gemini_response = (
-            "Recursion is when a function invokes itself to solve a problem "
-            "by breaking it into smaller subproblems."
+            "Recursion is when a function invokes itself to solve a problem by breaking it into smaller subproblems."
         )
         await cache.set(
             prompt,

@@ -70,9 +70,7 @@ class ModelRouter:
         # Try cloud backend first if configured
         if provider == "cloud" and self._cloud:
             model = self._config.model.cloud_model or "unknown"
-            response = await self._cache.get(
-                prompt, model, provider, temperature, json_mode, system
-            )
+            response = await self._cache.get(prompt, model, provider, temperature, json_mode, system)
             if response is not None:
                 return response
 
@@ -81,9 +79,7 @@ class ModelRouter:
                 response = await self._cloud.generate(
                     prompt, system=system, json_mode=json_mode, temperature=temperature
                 )
-                await self._cache.set(
-                    prompt, model, provider, temperature, json_mode, response, system
-                )
+                await self._cache.set(prompt, model, provider, temperature, json_mode, response, system)
                 return response
             except Exception as e:
                 logger.error("Cloud API failed: %s", e)
@@ -93,9 +89,7 @@ class ModelRouter:
         if provider in ("ollama", "local"):
             if await self._ollama.is_available():
                 model = await self._resolve_ollama_model()
-                response = await self._cache.get(
-                    prompt, model, provider, temperature, json_mode, system
-                )
+                response = await self._cache.get(prompt, model, provider, temperature, json_mode, system)
                 if response is not None:
                     return response
 
@@ -107,34 +101,24 @@ class ModelRouter:
                     json_mode=json_mode,
                     temperature=temperature,
                 )
-                await self._cache.set(
-                    prompt, model, provider, temperature, json_mode, response, system
-                )
+                await self._cache.set(prompt, model, provider, temperature, json_mode, response, system)
                 return response
 
             if self._try_llamacpp():
                 model = "llamacpp"  # Use generic name for llamacpp
-                response = await self._cache.get(
-                    prompt, model, provider, temperature, json_mode, system
-                )
+                response = await self._cache.get(prompt, model, provider, temperature, json_mode, system)
                 if response is not None:
                     return response
 
                 await self._rate_limiter.acquire()
-                response = await self._llamacpp_generate(
-                    prompt, system=system, temperature=temperature
-                )
-                await self._cache.set(
-                    prompt, model, provider, temperature, json_mode, response, system
-                )
+                response = await self._llamacpp_generate(prompt, system=system, temperature=temperature)
+                await self._cache.set(prompt, model, provider, temperature, json_mode, response, system)
                 return response
 
         # Fallback: try ollama if not already tried
         if provider != "ollama" and await self._ollama.is_available():
             model = await self._resolve_ollama_model()
-            response = await self._cache.get(
-                prompt, model, "ollama", temperature, json_mode, system
-            )
+            response = await self._cache.get(prompt, model, "ollama", temperature, json_mode, system)
             if response is not None:
                 return response
 
@@ -146,28 +130,20 @@ class ModelRouter:
                 json_mode=json_mode,
                 temperature=temperature,
             )
-            await self._cache.set(
-                prompt, model, "ollama", temperature, json_mode, response, system
-            )
+            await self._cache.set(prompt, model, "ollama", temperature, json_mode, response, system)
             return response
 
         # Final fallback: cloud API
         if self._cloud:
             model = self._config.model.cloud_model or "unknown"
-            response = await self._cache.get(
-                prompt, model, "cloud", temperature, json_mode, system
-            )
+            response = await self._cache.get(prompt, model, "cloud", temperature, json_mode, system)
             if response is not None:
                 return response
 
             logger.warning("Falling back to cloud API — Ollama unavailable")
             await self._rate_limiter.acquire()
-            response = await self._cloud.generate(
-                prompt, system=system, json_mode=json_mode, temperature=temperature
-            )
-            await self._cache.set(
-                prompt, model, "cloud", temperature, json_mode, response, system
-            )
+            response = await self._cloud.generate(prompt, system=system, json_mode=json_mode, temperature=temperature)
+            await self._cache.set(prompt, model, "cloud", temperature, json_mode, response, system)
             return response
 
         raise RuntimeError("No model backend available. Start Ollama or configure a cloud API key.")
