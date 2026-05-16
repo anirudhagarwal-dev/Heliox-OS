@@ -51,6 +51,7 @@ from pilot.actions import (
     VolumeParams,
     WifiParams,
     WindowParams,
+    WorkspaceParams,
 )
 from pilot.agents.sandbox import SimulationSandbox
 from pilot.security.audit import AuditLogger
@@ -244,6 +245,8 @@ class Executor:
             ActionType.API_SLACK: self._exec_api_slack,
             ActionType.API_DISCORD: self._exec_api_discord,
             ActionType.API_SCRAPE: self._exec_api_scrape,
+            ActionType.WORKSPACE_INDEX: self._exec_workspace_index,
+            ActionType.WORKSPACE_SEARCH: self._exec_workspace_search,
         }
 
     def _analyze_dependencies(self, actions: list[Action]) -> list[list[Action]]:
@@ -1722,3 +1725,51 @@ class Executor:
 
         p: ApiRequestParams = action.parameters  # type: ignore[assignment]
         return await scrape_url(p.url, p.selector, p.extract)
+
+    # ======================================================================
+    # WORKSPACE SEMANTIC SEARCH (RAG)
+    # ======================================================================
+
+    async def _exec_workspace_index(self, action: Action) -> str:
+        import asyncio
+
+        from pilot.config import DATA_DIR
+        from pilot.memory.workspace_index import WorkspaceIndex
+
+        p: WorkspaceParams = action.parameters  # type: ignore[assignment]
+        if not p.folder_path:
+            raise ValueError("workspace_index requires a folder_path")
+
+        index_dir = DATA_DIR / "workspace_index"
+        idx = WorkspaceIndex(index_dir)
+        result = await asyncio.to_thread(idx.index_workspace, p.folder_path)
+        if not result.get("success"):
+            raise RuntimeError(result.get("error", "Indexing failed"))
+        return (
+            f"Indexed workspace: {result['files_indexed']} new files, "
+            f"{result.get('files_unchanged', 0)} unchanged, "
+            f"{result['total_chunks']} total chunks"
+        )
+
+    async def _exec_workspace_search(self, action: Action) -> str:
+        import asyncio
+
+        from pilot.config import DATA_DIR
+        from pilot.memory.workspace_index import WorkspaceIndex
+
+        p: WorkspaceParams = action.parameters  # type: ignore[assignment]
+        if not p.query:
+            raise ValueError("workspace_search requires a query")
+
+        index_dir = DATA_DIR / "workspace_index"
+        idx = WorkspaceIndex(index_dir)
+        results = await asyncio.to_thread(idx.search, p.query, p.n_results)
+        if not results:
+            return "No results found in workspace index."
+
+        lines = []
+        for r in results:
+            lines.append(f"File: {r['file']} (lines {r['start_line']}-{r['end_line']}, score: {r['score']:.3f})")
+            lines.append(r["text"])
+            lines.append("---")
+        return "\n".join(lines)
