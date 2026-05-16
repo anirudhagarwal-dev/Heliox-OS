@@ -1250,6 +1250,7 @@ class PilotServer:
                         [
                             "timestamp_iso",
                             "timestamp_ms",
+                            "msg_type",
                             "text",
                             "plan_id",
                             "plan_explanation",
@@ -1259,6 +1260,7 @@ class PilotServer:
                             "result_success_count",
                             "result_error_count",
                             "result_outputs",
+                            "verification_passed",
                             "verification_details",
                         ]
                     )
