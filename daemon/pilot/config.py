@@ -123,6 +123,18 @@ class RSSConfig:
 
 
 @dataclass
+class RedisConfig:
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 6379
+    db: int = 0
+    password: str = ""
+    ssl: bool = False
+    key_prefix: str = "pilot:"
+    default_ttl: int = 300
+    max_memory_cache_size: int = 512
+
+
 class NetworkConfig:
     """LAN mesh network configuration for multi-instance collaboration."""
 
@@ -177,6 +189,7 @@ class PilotConfig:
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
     restrictions: Restrictions = field(default_factory=Restrictions)
     first_run_complete: bool = False
+    redis: RedisConfig = field(default_factory=RedisConfig)
 
     @classmethod
     def load(cls) -> PilotConfig:
@@ -279,6 +292,17 @@ def _validate_config_types(raw: dict) -> None:
             "feeds": list,
             "poll_interval_hours": (int, float),
             "max_items_per_feed": int,
+        },
+        "redis": {
+            "enabled": bool,
+            "host": str,
+            "port": int,
+            "db": int,
+            "password": str,
+            "ssl": bool,
+            "key_prefix": str,
+            "default_ttl": int,
+            "max_memory_cache_size": int,
         },
         "network": {
             "enabled": bool,
@@ -411,6 +435,10 @@ def _merge_config(config: PilotConfig, raw: dict[str, Any]) -> PilotConfig:
                     )
                 )
             config.ssh.allowed_hosts = parsed_hosts
+    if "redis" in raw:
+        for k, v in raw["redis"].items():
+            if hasattr(config.redis, k):
+                setattr(config.redis, k, v)
 
     if "proxy" in raw and isinstance(raw["proxy"], dict):
         for k, v in raw["proxy"].items():
