@@ -1835,6 +1835,7 @@ class Executor:
 
     async def _exec_wasm_call(self, action: Action) -> str:
         import json
+
         params: WasmCallParams = action.parameters  # type: ignore[assignment]
         tool_name = params.tool or action.target
         if not tool_name:

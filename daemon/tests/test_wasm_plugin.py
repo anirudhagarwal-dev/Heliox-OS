@@ -510,4 +510,3 @@ def test_wasm_validator_checks(default_config):
         ]
     )
     assert len(validator.validate_plan(plan_param)) == 0
-
