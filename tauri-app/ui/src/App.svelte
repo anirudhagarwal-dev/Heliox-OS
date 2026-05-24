@@ -1,5 +1,9 @@
 <script lang="ts">
   import CommandInput from "./lib/components/CommandInput.svelte";
+  import Dashboard from "./lib/components/Dashboard.svelte";
+  import { copyMessage as utilCopyMessage } from "./lib/utils/copy";
+  import { getJarvisGreeting } from "./lib/utils/greeting";
+  import { renderMarkdown } from "./lib/utils/markdown";
   import ConfirmDialog from "./lib/components/ConfirmDialog.svelte";
   import ActivityLog from "./lib/components/ActivityLog.svelte";
   import SettingsPanel from "./lib/components/SettingsPanel.svelte";
@@ -18,63 +22,32 @@
   import { session } from "./lib/stores/session";
   import type { Message } from "./lib/stores/session";
   import { settings } from "./lib/stores/settings";
-  import { onDestroy, tick } from "svelte";
-  import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+   import { tick } from "svelte";
   import { Copy } from "lucide-svelte";
-  import { marked } from "marked";
-  import DOMPurify from "dompurify";
-  import { highlight } from "./lib/highlighter";
+
   import ScrollToBottom from "./lib/components/ScrollToBottom.svelte";
   import ConnectionStatus from "./lib/components/ConnectionStatus.svelte";
+  let isDragging = $state(false);
   import { _, isLoading } from 'svelte-i18n';
 
-  const renderer = new marked.Renderer();
-  renderer.code = function({ text, lang }: { text: string; lang?: string }): string {
-    const language = lang || "";
-    const result = highlight(text, language);
-    const langLabel = result.language !== "plaintext" ? result.language : "";
-    const langBadge = langLabel ? `<span class="hlx-lang-badge">${langLabel}</span>` : "";
-    return `<div class="hlx-code-wrapper"><div class="hlx-code-header">${langBadge}<button class="hlx-copy-btn" data-code="${encodeURIComponent(text)}">Copy</button></div><pre class="hlx-pre"><code class="hljs language-${result.language}">${result.value}</code></pre></div>`;
-  };
-  marked.setOptions({ renderer, gfm: true, breaks: true });
-
-  function renderMarkdown(text: string): string {
-    if (!text) return "";
-    const raw = marked.parse(text) as string;
-    return DOMPurify.sanitize(raw);
-  }
-
-  let activeTab: "chat" | "log" | "settings" | "plugins" = $state("chat");
-  let isDragging = $state(false);
+  let activeTab: "chat" | "log" | "dashboard" | "settings" | "plugins" = $state("chat");
   let showWizard = $derived(
     !$settings.first_run_complete && localStorage.getItem("heliox_first_run_complete") !== "true"
   );
-
   let showScrollFAB = $state(false);
   let isAtBottom = $state(true);
-
   let virtualListEl: VirtualList<Message> | undefined = $state();
   let particleBurst: ParticleBurst | undefined = $state();
-
   $effect(() => {
     showScrollFAB = !isAtBottom;
   });
-
   async function onSetupComplete() {
     await settings.updateSection("", { first_run_complete: true });
     await tick();
     session.addSystemMessage(getJarvisGreeting());
   }
 
-  function getJarvisGreeting(): string {
-    const hour = new Date().getHours();
-    if (hour < 6) return "Good evening. Heliox OS is online. All systems nominal.";
-    if (hour < 12) return "Good morning. Heliox OS is online and ready for your commands.";
-    if (hour < 17) return "Good afternoon. Heliox OS at your service. What shall we tackle?";
-    if (hour < 21) return "Good evening. Heliox OS is ready. How can I assist you tonight?";
-    return "Burning the midnight oil? Heliox OS is standing by.";
-  }
-
+  // Handle gesture events for particle effects and navigation
   function onGestureDetected(gesture: string) {
     particleBurst?.gestureBurst(gesture);
     if (gesture === "swipe_left" || gesture === "two_finger_swipe_left") {
@@ -87,34 +60,28 @@
       activeTab = "settings";
     }
   }
-
   function scrollToBottom() {
     tick().then(() => {
       virtualListEl?.scrollToBottom();
       showScrollFAB = false;
     });
   }
-
   $effect(() => {
     $session.messages;
     $session.loading;
     scrollToBottom();
   });
-
   function formatActionType(t: string): string {
     return t.replace(/_/g, " ");
   }
-
   function tierLabel(action: { requires_root?: boolean; destructive?: boolean }): string {
     if (action.requires_root) return "ROOT";
     if (action.destructive) return "DESTRUCTIVE";
     return "SAFE";
   }
-
   function actionLabel(action: { action_type: string; dry_run?: boolean }, planDryRun = false): string {
     return action.dry_run || planDryRun ? `${formatActionType(action.action_type)} (dry run)` : formatActionType(action.action_type);
   }
-
   function tierClass(action: { requires_root?: boolean; destructive?: boolean }): string {
     if (action.requires_root) return "tier-root";
     if (action.destructive) return "tier-destructive";
@@ -131,61 +98,19 @@
     }
     prevMsgLen = msgs.length;
   });
-
   let copiedMessageId = $state<number | null>(null);
+
   let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  function getCopyText(msg: Message): string {
-    if (msg.type === "plan") {
-      const parts = [];
-      if (msg.plan?.explanation) parts.push(msg.plan.explanation);
-      if (msg.plan?.actions?.length) {
-        parts.push(msg.plan.actions.map((a: any) => `• ${a.action_type}: ${a.target || ""}`).join("\n"));
-      }
-      if (!parts.length && msg.plan?.actions?.length) {
-        parts.push(msg.plan.actions.map((a: any) => `• ${a.action_type}: ${a.target || ""}`).join("\n"));
-      }
-      return parts.join("\n\n");
-    }
-    if (msg.type === "result") {
-      const parts = [];
-      if (msg.text) parts.push(msg.text);
-      if (msg.actionResults?.length) {
-        const outputs = msg.actionResults
-          .map((r: any) => {
-            const content = r.output || r.error || "";
-            const actionType = r.action?.action_type || "";
-            return content ? `${actionType}: ${content}` : actionType;
-          })
-          .filter(Boolean)
-          .join("\n");
-        if (outputs) parts.push(outputs);
-      }
-      if (msg.verification) {
-        parts.push(`Verification: ${msg.verification.passed ? "passed" : "failed"}`);
-        if (msg.verification.details?.length) {
-          parts.push(msg.verification.details.join("\n"));
-        }
-      }
-      return parts.join("\n\n");
-    }
-    return msg.text || "";
-  }
-
   async function copyMessage(msg: Message) {
-    const text = getCopyText(msg).trim();
-    if (!text) return;
-    try {
-      await writeText(text);
-    } catch {
-      return;
+    if (await utilCopyMessage(msg)) {
+      copiedMessageId = msg.timestamp;
+      if (copiedTimeout) clearTimeout(copiedTimeout);
+      copiedTimeout = setTimeout(() => {
+        copiedMessageId = null;
+        copiedTimeout = null;
+      }, 1500);
     }
-    copiedMessageId = msg.timestamp;
-    if (copiedTimeout) clearTimeout(copiedTimeout);
-    copiedTimeout = setTimeout(() => {
-      copiedMessageId = null;
-      copiedTimeout = null;
-    }, 1500);
   }
 
   onDestroy(() => {
@@ -229,11 +154,9 @@
     URL.revokeObjectURL(url);
   }
 </script>
-
 {#if showWizard}
   <SetupWizard oncomplete={onSetupComplete} />
 {/if}
-
 <main
   class="window"
   class:dragging={isDragging}
@@ -242,8 +165,8 @@
   <header
     class="titlebar"
     data-tauri-drag-region
-    onmousedown={() => isDragging = true}
-    onmouseup={() => isDragging = false}
+    onmousedown={() => {isDragging = true}}
+    onmouseup={() => {isDragging = false}}
   >
     <div class="titlebar-left">
       <ArcReactor />
@@ -255,6 +178,7 @@
     <nav class="tabs">
       <button class="tab" class:active={activeTab === "chat"} title="Open Command Panel" onclick={() => activeTab = "chat"}>{$_('app.tab_command')}</button>
       <button class="tab" class:active={activeTab === "log"} title="Open activity log" onclick={() => activeTab = "log"}>{$_('app.tab_activity')}</button>
+      <button class="tab" class:active={activeTab === "dashboard"} title="Open Dashboard" onclick={() => activeTab = "dashboard"}>Dashboard</button>
       <button class="tab" class:active={activeTab === "plugins"} title="Browse plugin marketplace" onclick={() => activeTab = "plugins"}>{$_('app.tab_plugins')}</button>
       <button class="tab" class:active={activeTab === "settings"} title="Open Settings" onclick={() => activeTab = "settings"}>{$_('app.tab_settings')}</button>
     </nav>
@@ -272,7 +196,6 @@
         <div class="pipeline-container">
           <ReActPipeline />
         </div>
-
         {#if $session.confirmRequired}
           <ConfirmDialog
             actions={$session.confirmActions}
@@ -298,11 +221,9 @@
               {#snippet item(msg)}
                 {@render messageBlock(msg)}
               {/snippet}
-
               {#snippet footer()}
                 {#if $session.loading}
                   <ExecutionGraph />
-
                   {#if $session.streamingText}
                     <div class="message system streaming">
                       <div class="msg-header">
@@ -328,7 +249,6 @@
           {/if}
           <ScrollToBottom show={showScrollFAB} onclick={scrollToBottom} />
         </div>
-
         <div class="input-row">
           <VoiceControl />
           <CommandInput />
@@ -342,23 +262,23 @@
       </div>
     {:else if activeTab === "log"}
       <ActivityLog />
+    {:else if activeTab === "dashboard"}
+     <Dashboard />
     {:else if activeTab === "plugins"}
       <PluginsTab />
     {:else}
       <SettingsPanel />
     {/if}
   </div>
-
+  <!-- Particle Burst Overlay -->
   <ParticleBurst bind:this={particleBurst} />
 </main>
-
 {#snippet messageBlock(msg: Message)}
   {#if msg.type === "user"}
     <div class="message user-msg">
       <span class="msg-label">YOU</span>
       <span class="msg-text">{msg.text}</span>
     </div>
-
   {:else if msg.type === "plan" && msg.plan}
     <div class="message plan-msg has-copy">
       <div class="msg-header">
@@ -398,7 +318,6 @@
           </span>
         {/if}
       </div>
-
       {#if msg.actionResults && msg.actionResults.length > 0}
         {#each msg.actionResults as ar, i}
           <div class="action-result" class:action-success={ar.success} class:action-failure={!ar.success}>
@@ -424,7 +343,6 @@
       {:else}
         <span class="msg-text">{msg.text || $_('result.done')}</span>
       {/if}
-
       {#if msg.verification && msg.verification.details.length > 0}
         <div class="verification-section">
           <span class="verification-label">{$_('result.verification')}</span>
@@ -442,7 +360,6 @@
         {$_('chat.copied')}
       </span>
     </div>
-
   {:else if msg.type === "error"}
     <div class="message error-msg has-copy">
       <span class="msg-label">{$_('error.label')}</span>
