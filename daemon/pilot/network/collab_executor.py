@@ -251,14 +251,16 @@ class CollabExecutor:
         if not available:
             return None
 
-        # Pick peer with the most available VRAM.
-        # If VRAM is tied, pick the one with the lowest CPU load.
-        def peer_priority(pid: str) -> tuple[int, float]:
+        # Priority criteria:
+        # 1. Has NVIDIA GPU (has_gpu=True)
+        # 2. Most available VRAM
+        # 3. Lowest CPU load
+        def peer_priority(pid: str) -> tuple[bool, int, float]:
             conn = self._mesh.get_connection(pid)
             if not conn or not conn.peer_capabilities:
-                return (0, 1.0)
+                return (False, 0, 1.0)
             caps = conn.peer_capabilities
-            return (caps.vram_free, -caps.cpu_load)
+            return (caps.has_gpu, caps.vram_free, -caps.cpu_load)
 
         best = max(available, key=peer_priority)
         return best

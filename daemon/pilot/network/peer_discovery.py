@@ -52,6 +52,7 @@ class PeerInfo:
     port: int  # P2P WebSocket port
     hostname: str = ""  # human-readable hostname
     vram_free: int = 0  # available VRAM in bytes
+    has_gpu: bool = False  # True if the peer has an NVIDIA GPU
 
 
 class PeerDiscovery:
@@ -94,7 +95,7 @@ class PeerDiscovery:
         # Register our own service
         hostname = socket.gethostname()
         local_ip = _get_local_ip()
-        vram_free = get_available_vram()
+        vram_free, has_gpu = get_available_vram()
         service_name = f"helioxos-{self._instance_id}.{_SERVICE_TYPE}"
 
         self._service_info = ServiceInfo(
@@ -106,6 +107,7 @@ class PeerDiscovery:
                 "id": self._instance_id.encode(),
                 "host": hostname.encode(),
                 "vram": str(vram_free).encode(),
+                "gpu": str(int(has_gpu)).encode(),
             },
             server=f"{hostname}.local.",
         )
@@ -135,6 +137,38 @@ class PeerDiscovery:
         await self._zc.async_close()
         self._zc = None
         logger.info("PeerDiscovery: stopped")
+
+    async def update_vram(self, vram_free: int, has_gpu: bool) -> None:
+        """Update the VRAM and GPU info in our registered mDNS service record."""
+        if not _ZEROCONF_AVAILABLE or self._zc is None or self._service_info is None:
+            return
+
+        # Check if values actually changed to avoid redundant mDNS traffic
+        current_vram = int(self._service_info.properties.get(b"vram", b"0").decode())
+        current_gpu = bool(int(self._service_info.properties.get(b"gpu", b"0").decode()))
+
+        if vram_free == current_vram and has_gpu == current_gpu:
+            return
+
+        new_properties = dict(self._service_info.properties)
+        new_properties[b"vram"] = str(vram_free).encode()
+        new_properties[b"gpu"] = str(int(has_gpu)).encode()
+
+        updated_info = ServiceInfo(
+            type_=self._service_info.type,
+            name=self._service_info.name,
+            addresses=self._service_info.addresses,
+            port=self._service_info.port,
+            properties=new_properties,
+            server=self._service_info.server,
+        )
+
+        try:
+            await self._zc.async_update_service(updated_info)
+            self._service_info = updated_info
+            logger.debug("PeerDiscovery: updated mDNS VRAM info (%.1f MB)", vram_free / 1024**2)
+        except Exception as exc:
+            logger.warning("PeerDiscovery: failed to update mDNS service: %s", exc)
 
     def _on_service_state_change(
         self,
@@ -177,6 +211,8 @@ class PeerDiscovery:
             hostname = host_bytes.decode() if host_bytes else ""
             vram_bytes = info.properties.get(b"vram", b"0")
             vram_free = int(vram_bytes.decode()) if vram_bytes else 0
+            gpu_bytes = info.properties.get(b"gpu", b"0")
+            has_gpu = bool(int(gpu_bytes.decode())) if gpu_bytes else False
 
             # Skip ourselves
             if peer_id == self._instance_id:
@@ -189,6 +225,7 @@ class PeerDiscovery:
                 port=info.port,
                 hostname=hostname,
                 vram_free=vram_free,
+                has_gpu=has_gpu,
             )
             self._known_peers[peer_id] = peer
             logger.info(
