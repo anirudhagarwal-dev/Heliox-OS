@@ -127,10 +127,23 @@ class ScreenContext:
         return seen
 
 
+DISPLAY_OFF_TIMEOUT_DEFAULT = 10.0
+MAX_CONSECUTIVE_TIMEOUTS_DEFAULT = 3
+AUTO_RESUME_AFTER_SECONDS_DEFAULT = 30.0
+PAUSED_POLL_INTERVAL = 30.0
+
+
 class ScreenVisionAgent:
     """Monitors the screen and maintains awareness of what the user sees."""
 
-    def __init__(self, model_router: ModelRouter | None = None) -> None:
+    def __init__(
+        self,
+        model_router: ModelRouter | None = None,
+        *,
+        capture_timeout_seconds: float = DISPLAY_OFF_TIMEOUT_DEFAULT,
+        max_consecutive_timeouts: int = MAX_CONSECUTIVE_TIMEOUTS_DEFAULT,
+        auto_resume_after_seconds: float = AUTO_RESUME_AFTER_SECONDS_DEFAULT,
+    ) -> None:
         self._model = model_router
         self._context = ScreenContext()
         self._task: asyncio.Task[None] | None = None
@@ -138,7 +151,17 @@ class ScreenVisionAgent:
         self._interval_seconds: float = 3.0
         self._last_hash: str = ""
         self._screenshot_dir = SCREENSHOTS_DIR
-        self._enable_llm_describe = False  # Disabled by default (expensive)
+        self._enable_llm_describe = False
+        # Timeout / display-off handling
+        self._capture_timeout = capture_timeout_seconds
+        self._max_consecutive_timeouts = max_consecutive_timeouts
+        self._auto_resume_after = auto_resume_after_seconds
+        self._consecutive_timeouts: int = 0
+        self._paused: bool = False
+        self._last_active_timestamp: float = 0.0
+        # Delta-Frame Throttler State
+        self._visual_delta_threshold: float = 100.0  # Raised to ignore minor UI noise
+        self._last_frame_array = None
 
     def set_interval(self, interval_seconds: float) -> None:
         """Update the capture cadence while keeping it inside safe bounds."""
@@ -154,6 +177,9 @@ class ScreenVisionAgent:
         if self._task and not self._task.done():
             await self.stop()
         self._running = True
+        self._consecutive_timeouts = 0
+        self._paused = False
+        self._last_active_timestamp = time.time()
         self._screenshot_dir.mkdir(parents=True, exist_ok=True)
         self._task = asyncio.create_task(self._capture_loop())
         logger.info("Screen vision started (every %.1fs, describe=%s)", self._interval_seconds, enable_describe)
@@ -169,17 +195,62 @@ class ScreenVisionAgent:
                 pass
         logger.info("Screen vision stopped")
 
+    def is_paused(self) -> bool:
+        """Whether the agent has paused due to repeated capture timeouts."""
+        return self._paused
+
+    def pause(self) -> None:
+        """Gracefully pause the capture loop."""
+        if not self._paused:
+            self._paused = True
+            logger.info("Screen vision paused by request")
+
+    def resume(self) -> None:
+        """Resume the capture loop after a pause."""
+        self._consecutive_timeouts = 0
+        self._last_active_timestamp = time.time()
+        if self._paused:
+            self._paused = False
+            logger.info("Screen vision resumed")
+
     async def _capture_loop(self) -> None:
-        """Main capture loop."""
+        """Main capture loop with timeout and display-off handling."""
         while self._running:
             try:
-                state = await self._capture_state()
+                state = await asyncio.wait_for(
+                    self._capture_state(),
+                    timeout=self._capture_timeout,
+                )
                 self._context.add(state)
+                self._consecutive_timeouts = 0
+                self._last_active_timestamp = time.time()
+                if self._paused:
+                    self._paused = False
+                    logger.info("Screen vision auto-resumed — display back online")
+            except asyncio.TimeoutError:
+                self._consecutive_timeouts += 1
+                logger.debug(
+                    "Screen capture timed out (%d/%d consecutive)",
+                    self._consecutive_timeouts,
+                    self._max_consecutive_timeouts,
+                )
+                if self._consecutive_timeouts >= self._max_consecutive_timeouts:
+                    if not self._paused:
+                        self._paused = True
+                        logger.warning(
+                            "Screen vision paused — display appears to be off (%d consecutive timeouts)",
+                            self._consecutive_timeouts,
+                        )
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.debug("Screen capture error", exc_info=True)
-            await asyncio.sleep(self._interval_seconds)
+
+            if self._paused:
+                cap_sleep = max(self._interval_seconds, PAUSED_POLL_INTERVAL)
+            else:
+                cap_sleep = self._interval_seconds
+            await asyncio.sleep(cap_sleep)
 
     async def _capture_state(self) -> ScreenState:
         """Capture current screen state."""
@@ -229,20 +300,50 @@ class ScreenVisionAgent:
             return await asyncio.to_thread(self._sync_fallback_screenshot_hash)
 
     def _sync_screenshot_hash(self) -> str:
-        """Synchronous screenshot hash — runs in a thread."""
+        """Synchronous screenshot hash — runs in a thread using MSE delta."""
+        import uuid
+
         import mss
+        import numpy as np
+        from PIL import Image
 
         with mss.mss() as sct:
             monitor = sct.monitors[1]  # Primary monitor
             img = sct.grab(monitor)
-            raw = img.rgb
-            sampled = bytes(raw[i] for i in range(0, len(raw), 1000))
-            return hashlib.md5(sampled).hexdigest()
+
+            # Convert to PIL Image, resize to 64x64, and convert to grayscale
+            pil_img = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+            pil_img = pil_img.resize((64, 64)).convert("L")
+            current_frame = np.array(pil_img, dtype=np.float32)
+
+            if getattr(self, "_last_frame_array", None) is None:
+                self._last_frame_array = current_frame
+                self._last_hash = str(uuid.uuid4())
+                return self._last_hash
+
+            # Calculate Mean Squared Error (MSE)
+            mse = np.mean((current_frame - self._last_frame_array) ** 2)
+
+            # If the change is significant, update the array and generate a new hash
+            if mse > self._visual_delta_threshold:
+                self._last_frame_array = current_frame
+                self._last_hash = str(uuid.uuid4())
+
+            # If mse is low, this returns the old hash, telling the agent nothing changed
+            return self._last_hash
 
     def _sync_fallback_screenshot_hash(self) -> str:
-        """Synchronous fallback screenshot hash — runs in a thread."""
+        """Synchronous fallback screenshot hash using MSE delta."""
+        import platform
+        import subprocess
+        import uuid
+
+        import numpy as np
+        from PIL import Image
+
         os_name = platform.system()
         tmp_path = self._screenshot_dir / "_latest.png"
+        tmp_path.unlink(missing_ok=True)  # Clears the old screenshot to prevent false 0 MSE
         try:
             if os_name == "Windows":
                 ps_cmd = f"""
@@ -251,29 +352,31 @@ class ScreenVisionAgent:
                 $bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
                 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
                 $graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-                $bitmap.Save('{tmp_path}')
+                $bitmap.Save('{str(tmp_path)}')
                 """
-                subprocess.run(
-                    ["powershell", "-Command", ps_cmd],
-                    capture_output=True,
-                    timeout=5,
-                )
+                subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, timeout=5)
             elif os_name == "Darwin":
-                subprocess.run(
-                    ["screencapture", "-x", str(tmp_path)],
-                    capture_output=True,
-                    timeout=5,
-                )
+                subprocess.run(["screencapture", "-x", str(tmp_path)], capture_output=True, timeout=5)
             else:
-                subprocess.run(
-                    ["scrot", str(tmp_path)],
-                    capture_output=True,
-                    timeout=5,
-                )
+                subprocess.run(["scrot", str(tmp_path)], capture_output=True, timeout=5)
 
             if tmp_path.exists():
-                data = tmp_path.read_bytes()
-                return hashlib.md5(data[::1000]).hexdigest()
+                pil_img = Image.open(tmp_path).resize((64, 64)).convert("L")
+                current_frame = np.array(pil_img, dtype=np.float32)
+
+                if getattr(self, "_last_frame_array", None) is None:
+                    self._last_frame_array = current_frame
+                    self._last_hash = str(uuid.uuid4())
+                    return self._last_hash
+
+                mse = np.mean((current_frame - self._last_frame_array) ** 2)
+
+                if mse > self._visual_delta_threshold:
+                    self._last_frame_array = current_frame
+                    self._last_hash = str(uuid.uuid4())
+
+                return self._last_hash
+
         except Exception:
             logger.debug("Fallback screenshot failed", exc_info=True)
         return ""
@@ -302,11 +405,15 @@ class ScreenVisionAgent:
         """Return vision agent statistics."""
         return {
             "running": self._running,
+            "paused": self._paused,
             "interval_seconds": self._interval_seconds,
             "buffer_size": len(self._context.states),
             "llm_describe_enabled": self._enable_llm_describe,
             "current": self._context.current().to_dict() if self._context.current() else None,
             "recent_apps": self._context._recent_apps(),
+            "consecutive_timeouts": self._consecutive_timeouts,
+            "max_consecutive_timeouts": self._max_consecutive_timeouts,
+            "capture_timeout_seconds": self._capture_timeout,
         }
 
     async def detect_actionable_elements(

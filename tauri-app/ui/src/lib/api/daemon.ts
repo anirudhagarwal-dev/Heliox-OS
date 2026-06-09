@@ -39,16 +39,49 @@ export function isConnected(): boolean {
 export async function connect(): Promise<boolean> {
   if (isConnected()) return true;
 
+  // Fetch the auth token from the Rust backend before opening the socket.
+  // get_auth_token() reads the file the Python daemon writes on startup.
+  // Fallback: VITE_DAEMON_TOKEN env var for browser-only dev mode (no Tauri).
+  let authToken = "";
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    authToken = (await invoke<string>("get_auth_token")) ?? "";
+  } catch {
+    // Running in browser dev mode without Tauri — read from env variable.
+    // Set VITE_DAEMON_TOKEN in your .env.local to match the daemon token.
+    authToken = (import.meta as any).env?.VITE_DAEMON_TOKEN ?? "";
+  }
+
   return new Promise((resolve) => {
     try {
       ws = new WebSocket(DAEMON_URL);
 
-      ws.onopen = () => {
+      ws.onopen = async () => {
         if (reconnectTimer) {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
-        resolve(true);
+
+        // Send the auth handshake as the very first message.
+        // The daemon rejects any connection whose first message is not auth.
+        const authId = ++messageId;
+        const authRequest = {
+          jsonrpc: "2.0",
+          method: "auth",
+          params: { token: authToken },
+          id: authId,
+        };
+
+        // Register a one-shot pending resolver for the auth response
+        pending.set(authId, {
+          resolve: (_v) => resolve(true),
+          reject: (_e) => {
+            ws = null;
+            resolve(false);
+          },
+        });
+
+        ws!.send(JSON.stringify(authRequest));
       };
 
       ws.onmessage = (event) => {

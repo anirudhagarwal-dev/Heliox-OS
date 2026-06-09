@@ -128,6 +128,9 @@ class VoiceConfig:
 @dataclass
 class ScreenVisionConfig:
     capture_interval_seconds: float = 3.0
+    capture_timeout_seconds: float = 10.0
+    max_consecutive_timeouts: int = 3
+    auto_resume_after_seconds: float = 30.0
 
 
 @dataclass
@@ -140,6 +143,8 @@ class ProxyConfig:
 @dataclass
 class MemoryConfig:
     checkpoint_interval_seconds: int = 300
+    pruning_interval_seconds: int = 3600
+    pruning_min_memories: int = 10
     max_context_tokens: int = 8000
     max_recent_messages: int = 10
 
@@ -316,9 +321,14 @@ def _validate_config_types(raw: dict) -> None:
         },
         "screen_vision": {
             "capture_interval_seconds": (int, float),
+            "capture_timeout_seconds": (int, float),
+            "max_consecutive_timeouts": int,
+            "auto_resume_after_seconds": (int, float),
         },
         "memory": {
             "checkpoint_interval_seconds": int,
+            "pruning_interval_seconds": int,
+            "pruning_min_memories": int,
             "max_context_tokens": int,
             "max_recent_messages": int,
         },
@@ -426,12 +436,21 @@ def _merge_config(config: PilotConfig, raw: dict[str, Any]) -> PilotConfig:
     if "screen_vision" in raw:
         for k, v in raw["screen_vision"].items():
             if hasattr(config.screen_vision, k):
-                setattr(config.screen_vision, k, float(v))
+                if k == "max_consecutive_timeouts":
+                    setattr(config.screen_vision, k, int(v))
+                else:
+                    setattr(config.screen_vision, k, float(v))
 
     if "memory" in raw:
         for k, v in raw["memory"].items():
             if hasattr(config.memory, k):
-                if k in ("max_context_tokens", "max_recent_messages", "checkpoint_interval_seconds"):
+                if k in (
+                    "max_context_tokens",
+                    "max_recent_messages",
+                    "checkpoint_interval_seconds",
+                    "pruning_interval_seconds",
+                    "pruning_min_memories",
+                ):
                     setattr(config.memory, k, int(v))
                 else:
                     setattr(config.memory, k, v)
