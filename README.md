@@ -830,95 +830,54 @@ no_proxy = "localhost,127.0.0.1"
 ```
 ## 🛠️ Troubleshooting
 
-### Python Version Issues:
-Heliox OS requires **Python 3.11+**.
+### Frequently Asked Questions (FAQ)
 
-Check your Python version:
-```bash
-python --version
+#### Q1: The daemon fails to start — what should I check?
+**A:** First, verify you are using **Python 3.11+**. Check your version with `python --version`. If it still fails, check the logs at `~/.local/state/heliox-os/pilot.log` for specific error messages. Ensure that port `8785` is not being used by another application.
+
+#### Q2: I get an API key error even though I entered one.
+**A:** Heliox OS stores API keys securely in your system keyring (GNOME Keyring/libsecret on Linux, Credential Manager on Windows) or an encrypted `vault.enc` file. It does **not** use `.env` files. Ensure you've added the key via the Settings tab in the UI. If the issue persists, check if `libsecret-1-dev` is installed (on Linux).
+
+#### Q3: How do I switch from Ollama to a cloud LLM?
+**A:** You can change your model provider in the `~/.config/heliox-os/config.toml` file. Under the `[model]` section, set `provider = "cloud"` and specify your `cloud_provider` (e.g., `"gemini"`, `"openai"`, or `"claude"`).
+
+```toml
+[model]
+provider = "cloud"
+cloud_provider = "gemini"
 ```
 
-If the version is lower than 3.11, install the latest Python version from the official website.
+#### Q4: Voice detection isn't working on Linux.
+**A:** Ensure that `portaudio19-dev` and `python3-pyaudio` are installed on your system. You may also need to grant your terminal or the Heliox app permission to access the microphone in your system settings.
 
----
+#### Q5: Hand gesture control requires a webcam — which ones are supported?
+**A:** Any standard USB or integrated webcam supported by your OS will work. Heliox OS uses OpenCV for vision tasks. If your camera isn't detected, ensure no other application is currently using it. Note that there is no `CAMERA_INDEX` configuration variable; the system automatically attempts to find the default camera.
 
-### `npm install` Fails:
+#### Q6: Port already in use (8785 or 8786).
+**A:** Heliox OS uses port `8785` for the API and `8786` for mesh networking. If these ports are occupied, you can identify and stop the conflicting process:
 
-Try clearing the npm cache and reinstalling dependencies:
-
-```bash
-npm cache clean --force
-npm install
-```
-
-Also ensure that Node.js and npm are installed correctly.
-
----
-
-### Ollama Not Running:
-
-If local models are not responding, make sure Ollama is installed and running:
-
-```bash
-ollama serve
-```
-
-You can verify installation using:
-
-```bash
-ollama --version
-```
-
----
-
-### Port Already in Use:
-
-If the backend server fails because the port is already occupied:
-
-#### Linux/macOS
-
+**Linux/macOS:**
 ```bash
 lsof -i :8785
 kill -9 <PID>
 ```
 
-#### Windows
-
+**Windows:**
 ```powershell
 netstat -ano | findstr :8785
 taskkill /PID <PID> /F
 ```
 
----
-
-### Missing API Key Errors:
-
-If cloud models like Gemini, OpenAI, or Claude are not working:
-- Ensure your API key is added correctly in the application settings
-- Restart the application after updating the key
-
----
-
-### Permission Errors on Linux/macOS:
-
-If commands fail due to permission restrictions:
-- Avoid running Heliox OS as root unless necessary
-- Ensure Python and npm packages are installed with proper permissions
-
----
-
-### Frontend Not Starting:
-
-If the UI fails to launch:
+#### Q7: Frontend Not Starting.
+**A:** If the UI fails to launch, try clearing the npm cache and reinstalling dependencies:
 
 ```bash
+cd tauri-app/ui
 npm install
 npm run dev
 ```
 
 Ensure all frontend dependencies are installed successfully before starting the app.
-
-> Tip: If no proxy section is configured, the daemon will fall back to standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
 
 ## 🤝 Contributing
 
