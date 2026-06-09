@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("pilot.agents.calendar_agent")
 
+
 @auto_register
 class CalendarAgent(BaseAgent):
     """Specialist agent for managing calendar events (local .ics and remote CalDAV)."""
@@ -85,8 +86,8 @@ class CalendarAgent(BaseAgent):
             if not self.can_handle(action.action_type):
                 continue
 
-            payload = action.parameters.model_dump() if hasattr(action.parameters, 'model_dump') else {}
-            
+            payload = action.parameters.model_dump() if hasattr(action.parameters, "model_dump") else {}
+
             if action.action_type == ActionType.CALENDAR_PARSE:
                 res = await self._handle_parse(action, payload)
             elif action.action_type == ActionType.CALENDAR_SYNC:
@@ -99,29 +100,40 @@ class CalendarAgent(BaseAgent):
                 res = await self._handle_delete_event(action, payload)
             else:
                 res = ActionResult(action=action, success=False, error="Unsupported action")
-            
+
             results.append(res)
-        
+
         return results
 
     async def _handle_parse(self, action: Action, payload: dict[str, Any]) -> ActionResult:
         file_path = payload.get("file_path")
         if not file_path:
             return ActionResult(action=action, success=False, error="Missing file_path")
-        
+
         try:
             import json
-            with open(file_path, 'rb') as f:
+
+            with open(file_path, "rb") as f:
                 cal = icalendar.Calendar.from_ical(f.read())
                 events = []
                 for component in cal.walk():
                     if component.name == "VEVENT":
-                        events.append({
-                            "summary": str(component.get('summary')),
-                            "start": component.get('dtstart').dt.isoformat() if hasattr(component.get('dtstart').dt, 'isoformat') else str(component.get('dtstart').dt),
-                            "end": (component.get('dtend').dt.isoformat() if hasattr(component.get('dtend').dt, 'isoformat') else str(component.get('dtend').dt)) if component.get('dtend') else None,
-                            "description": str(component.get('description', '')),
-                        })
+                        events.append(
+                            {
+                                "summary": str(component.get("summary")),
+                                "start": component.get("dtstart").dt.isoformat()
+                                if hasattr(component.get("dtstart").dt, "isoformat")
+                                else str(component.get("dtstart").dt),
+                                "end": (
+                                    component.get("dtend").dt.isoformat()
+                                    if hasattr(component.get("dtend").dt, "isoformat")
+                                    else str(component.get("dtend").dt)
+                                )
+                                if component.get("dtend")
+                                else None,
+                                "description": str(component.get("description", "")),
+                            }
+                        )
                 return ActionResult(action=action, success=True, output=json.dumps({"events": events}))
         except Exception as e:
             logger.error(f"Failed to parse .ics file: {e}")
@@ -131,23 +143,26 @@ class CalendarAgent(BaseAgent):
         url = self._config.calendar.caldav_url
         username = self._config.calendar.caldav_username
         password = ""
-        
+
         if self._config.calendar.caldav_password_provider:
             password = self._vault.get_secret(self._config.calendar.caldav_password_provider) or ""
-            
+
         if not url or not username:
             raise ValueError("CalDAV configuration missing (url/username)")
-            
+
         client = caldav.DAVClient(url=url, username=username, password=password)
         return client
 
     async def _handle_sync(self, action: Action, payload: dict[str, Any]) -> ActionResult:
         try:
             import json
+
             client = await self._get_caldav_client()
             principal = client.principal()
             calendars = principal.calendars()
-            return ActionResult(action=action, success=True, output=json.dumps({"calendars": [c.name for c in calendars]}))
+            return ActionResult(
+                action=action, success=True, output=json.dumps({"calendars": [c.name for c in calendars]})
+            )
         except Exception as e:
             logger.error(f"CalDAV sync failed: {e}")
             return ActionResult(action=action, success=False, error=str(e))
@@ -157,14 +172,18 @@ class CalendarAgent(BaseAgent):
         summary = payload.get("summary")
         start = payload.get("start")
         end = payload.get("end")
-        
+
         if not all([summary, start]):
             return ActionResult(action=action, success=False, error="Missing summary or start time")
-            
+
         try:
             client = await self._get_caldav_client()
-            calendar = client.principal().calendars()[0] # Use first calendar for now
-            calendar.save_event(dtstart=datetime.fromisoformat(start), dtend=datetime.fromisoformat(end) if end else None, summary=summary)
+            calendar = client.principal().calendars()[0]  # Use first calendar for now
+            calendar.save_event(
+                dtstart=datetime.fromisoformat(start),
+                dtend=datetime.fromisoformat(end) if end else None,
+                summary=summary,
+            )
             return ActionResult(action=action, success=True, output="Event created")
         except Exception as e:
             logger.error(f"Failed to create event: {e}")
@@ -173,6 +192,7 @@ class CalendarAgent(BaseAgent):
     async def _handle_list_events(self, action: Action, payload: dict[str, Any]) -> ActionResult:
         try:
             import json
+
             client = await self._get_caldav_client()
             calendar = client.principal().calendars()[0]
             events = calendar.events()
@@ -181,10 +201,12 @@ class CalendarAgent(BaseAgent):
                 ical = icalendar.Calendar.from_ical(event.data)
                 for component in ical.walk():
                     if component.name == "VEVENT":
-                        parsed_events.append({
-                            "summary": str(component.get('summary')),
-                            "start": str(component.get('dtstart').dt),
-                        })
+                        parsed_events.append(
+                            {
+                                "summary": str(component.get("summary")),
+                                "start": str(component.get("dtstart").dt),
+                            }
+                        )
             return ActionResult(action=action, success=True, output=json.dumps({"events": parsed_events}))
         except Exception as e:
             logger.error(f"Failed to list events: {e}")
